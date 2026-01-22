@@ -9,6 +9,8 @@ import androidx.media3.common.util.UnstableApi
 import com.doublesymmetry.kotlinaudio.models.AudioItemOptions
 import com.doublesymmetry.kotlinaudio.models.MediaType
 import com.doublesymmetry.trackplayer.utils.BundleUtils
+import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.ReadableMap
 import androidx.media3.datasource.RawResourceDataSource
 
 /**
@@ -44,6 +46,14 @@ class Track
             options = AudioItemOptions(headers, userAgent, resourceId),
             mediaId = mediaId
         )
+    }
+
+    fun toBundle(): Bundle {
+        return originalItem
+    }
+
+    fun toReadableMap(): ReadableMap {
+        return Arguments.fromBundle(originalItem)
     }
 
     init {

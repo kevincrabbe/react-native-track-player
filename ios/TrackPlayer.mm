@@ -181,6 +181,45 @@ RCT_EXPORT_MODULE()
   [nativeTrackPlayer updateOptions:options resolver:resolve rejecter:reject];
 }
 
+/*****************************************
+ * Background Track Methods
+ *****************************************/
+- (void)setBackgroundTrack:(nullable NSDictionary *)track resolve:(nonnull RCTPromiseResolveBlock)resolve reject:(nonnull RCTPromiseRejectBlock)reject {
+  [nativeTrackPlayer setBackgroundTrack:track resolve:resolve reject:reject];
+}
+
+- (void)getBackgroundTrack:(nonnull RCTPromiseResolveBlock)resolve reject:(nonnull RCTPromiseRejectBlock)reject {
+  [nativeTrackPlayer getBackgroundTrack:resolve reject:reject];
+}
+
+- (void)setBackgroundVolume:(double)volume resolve:(nonnull RCTPromiseResolveBlock)resolve reject:(nonnull RCTPromiseRejectBlock)reject {
+  [nativeTrackPlayer setBackgroundVolume:(float)volume resolve:resolve reject:reject];
+}
+
+- (void)getBackgroundVolume:(nonnull RCTPromiseResolveBlock)resolve reject:(nonnull RCTPromiseRejectBlock)reject {
+  [nativeTrackPlayer getBackgroundVolume:resolve reject:reject];
+}
+
+- (void)playBackground:(nonnull RCTPromiseResolveBlock)resolve reject:(nonnull RCTPromiseRejectBlock)reject {
+  [nativeTrackPlayer playBackground:resolve reject:reject];
+}
+
+- (void)pauseBackground:(nonnull RCTPromiseResolveBlock)resolve reject:(nonnull RCTPromiseRejectBlock)reject {
+  [nativeTrackPlayer pauseBackground:resolve reject:reject];
+}
+
+- (void)stopBackground:(nonnull RCTPromiseResolveBlock)resolve reject:(nonnull RCTPromiseRejectBlock)reject {
+  [nativeTrackPlayer stopBackground:resolve reject:reject];
+}
+
+- (void)setBackgroundCrossfade:(nullable NSDictionary *)options resolve:(nonnull RCTPromiseResolveBlock)resolve reject:(nonnull RCTPromiseRejectBlock)reject {
+  [nativeTrackPlayer setBackgroundCrossfade:options resolve:resolve reject:reject];
+}
+
+- (void)getBackgroundState:(nonnull RCTPromiseResolveBlock)resolve reject:(nonnull RCTPromiseRejectBlock)reject {
+  [nativeTrackPlayer getBackgroundState:resolve reject:reject];
+}
+
 // event listeners
 - (void)sendEvent:(NSString *)name body:(id)body {
   [super sendEventWithName:name body:body];

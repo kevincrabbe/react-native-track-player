@@ -3,6 +3,8 @@ import { AppRegistry, NativeEventEmitter, Platform } from 'react-native';
 import { Event, RepeatMode } from './constants';
 import type {
   AddTrack,
+  BackgroundCrossfadeOptions,
+  BackgroundTrackState,
   EventPayloadByEvent,
   NowPlayingMetadata,
   PlaybackState,
@@ -455,4 +457,99 @@ export async function abandonWakeLock() {
 export async function validateOnStartCommandIntent(): Promise<boolean> {
   if (!isAndroid) return true;
   return TrackPlayer.validateOnStartCommandIntent();
+}
+
+// MARK: - Background Track API
+
+/**
+ * Sets or clears the background track.
+ *
+ * The background track plays independently of the main queue and can be used
+ * for ambient audio, background music, or other audio that should play
+ * alongside the main content.
+ *
+ * @param track The track to set as the background track, or null to clear it.
+ * @see https://rntp.dev/docs/api/functions/background#setbackgroundtrack
+ */
+export async function setBackgroundTrack(
+  track: AddTrack | null
+): Promise<void> {
+  return TrackPlayer.setBackgroundTrack(
+    track ? resolveTrackAssets(track) : null
+  );
+}
+
+/**
+ * Gets the current background track.
+ *
+ * @returns The current background track, or null if no background track is set.
+ * @see https://rntp.dev/docs/api/functions/background#getbackgroundtrack
+ */
+export async function getBackgroundTrack(): Promise<Track | null> {
+  return ((await TrackPlayer.getBackgroundTrack()) as Track) ?? null;
+}
+
+/**
+ * Sets the volume of the background track.
+ *
+ * @param volume The volume as a number between 0 and 1.
+ * @see https://rntp.dev/docs/api/functions/background#setbackgroundvolume
+ */
+export async function setBackgroundVolume(volume: number): Promise<void> {
+  return TrackPlayer.setBackgroundVolume(volume);
+}
+
+/**
+ * Gets the volume of the background track.
+ *
+ * @returns The volume as a number between 0 and 1.
+ * @see https://rntp.dev/docs/api/functions/background#getbackgroundvolume
+ */
+export async function getBackgroundVolume(): Promise<number> {
+  return TrackPlayer.getBackgroundVolume();
+}
+
+/**
+ * Starts playback of the background track.
+ *
+ * @see https://rntp.dev/docs/api/functions/background#playbackground
+ */
+export async function playBackground(): Promise<void> {
+  return TrackPlayer.playBackground();
+}
+
+/**
+ * Pauses playback of the background track.
+ *
+ * @see https://rntp.dev/docs/api/functions/background#pausebackground
+ */
+export async function pauseBackground(): Promise<void> {
+  return TrackPlayer.pauseBackground();
+}
+
+/**
+ * Sets the crossfade options for background track looping.
+ *
+ * When crossfade is enabled, the background track will smoothly fade out
+ * near the end and fade back in from the beginning when looping, creating
+ * a seamless loop effect.
+ *
+ * @param options The crossfade options, or null to disable crossfade.
+ * @see https://rntp.dev/docs/api/functions/background#setbackgroundcrossfade
+ */
+export async function setBackgroundCrossfade(
+  options: BackgroundCrossfadeOptions | null
+): Promise<void> {
+  return TrackPlayer.setBackgroundCrossfade(options);
+}
+
+/**
+ * Gets the full state of the background track player.
+ *
+ * @returns The current background track state including track, playback status,
+ * volume, and crossfade options.
+ * @see https://rntp.dev/docs/api/functions/background#getbackgroundstate
+ */
+export async function getBackgroundState(): Promise<BackgroundTrackState> {
+  return (await TrackPlayer.getBackgroundState()) as BackgroundTrackState;
 }

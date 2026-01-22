@@ -21,6 +21,7 @@ import com.doublesymmetry.trackplayer.service.MusicService
 import com.doublesymmetry.trackplayer.utils.AppForegroundTracker
 import com.doublesymmetry.trackplayer.utils.RejectionException
 import com.facebook.react.bridge.*
+import com.facebook.react.bridge.ReactMethod
 import androidx.media3.common.Player
 import androidx.media3.session.MediaBrowser
 import androidx.media3.session.SessionToken
@@ -559,6 +560,86 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
     override fun validateOnStartCommandIntent(callback: Promise) = launchInScope {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
         callback.resolve(musicService.onStartCommandIntentValid)
+    }
+
+    // MARK: - Background Track Methods
+
+    @ReactMethod
+    fun setBackgroundTrack(trackMap: ReadableMap?, promise: Promise) = launchInScope {
+        if (verifyServiceBoundOrReject(promise)) return@launchInScope
+
+        try {
+            val track = if (trackMap != null) {
+                val bundle = Arguments.toBundle(trackMap)
+                if (bundle != null) bundleToTrack(bundle) else null
+            } else null
+            musicService.setBackgroundTrack(track)
+            promise.resolve(null)
+        } catch (exception: Exception) {
+            rejectWithException(promise, exception)
+        }
+    }
+
+    @ReactMethod
+    fun getBackgroundTrack(promise: Promise) = launchInScope {
+        if (verifyServiceBoundOrReject(promise)) return@launchInScope
+
+        val track = musicService.getBackgroundTrack()
+        promise.resolve(track?.let { Arguments.fromBundle(it.originalItem) })
+    }
+
+    @ReactMethod
+    fun setBackgroundVolume(volume: Double, promise: Promise) = launchInScope {
+        if (verifyServiceBoundOrReject(promise)) return@launchInScope
+
+        musicService.setBackgroundVolume(volume.toFloat())
+        promise.resolve(null)
+    }
+
+    @ReactMethod
+    fun getBackgroundVolume(promise: Promise) = launchInScope {
+        if (verifyServiceBoundOrReject(promise)) return@launchInScope
+
+        promise.resolve(musicService.getBackgroundVolume().toDouble())
+    }
+
+    @ReactMethod
+    fun playBackground(promise: Promise) = launchInScope {
+        if (verifyServiceBoundOrReject(promise)) return@launchInScope
+
+        musicService.playBackground()
+        promise.resolve(null)
+    }
+
+    @ReactMethod
+    fun pauseBackground(promise: Promise) = launchInScope {
+        if (verifyServiceBoundOrReject(promise)) return@launchInScope
+
+        musicService.pauseBackground()
+        promise.resolve(null)
+    }
+
+    @ReactMethod
+    fun setBackgroundCrossfade(options: ReadableMap?, promise: Promise) = launchInScope {
+        if (verifyServiceBoundOrReject(promise)) return@launchInScope
+
+        if (options != null) {
+            val duration = options.getDouble("duration")
+            val fadeInCurve = if (options.hasKey("fadeInCurve")) options.getString("fadeInCurve") ?: "linear" else "linear"
+            val fadeOutCurve = if (options.hasKey("fadeOutCurve")) options.getString("fadeOutCurve") ?: "linear" else "linear"
+            musicService.setBackgroundCrossfade(duration, fadeInCurve, fadeOutCurve)
+        } else {
+            musicService.clearBackgroundCrossfade()
+        }
+        promise.resolve(null)
+    }
+
+    @ReactMethod
+    fun getBackgroundState(promise: Promise) = launchInScope {
+        if (verifyServiceBoundOrReject(promise)) return@launchInScope
+
+        val state = musicService.getBackgroundState()
+        promise.resolve(Arguments.fromBundle(state))
     }
 
     // Bridgeless interop layer tries to pass the `Job` from `scope.launch` to the JS side

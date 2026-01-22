@@ -1,4 +1,6 @@
 export * from './AndroidOptions';
+export * from './BackgroundCrossfadeOptions';
+export * from './BackgroundTrackState';
 export * from './events';
 export * from './FeedbackOptions';
 export * from './MediaItem';

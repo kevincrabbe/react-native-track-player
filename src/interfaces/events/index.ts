@@ -1,4 +1,7 @@
 export * from './AudioMetadataReceivedEvent';
+export * from './BackgroundCrossfadeStartedEvent';
+export * from './BackgroundPlaybackStateEvent';
+export * from './BackgroundTrackChangedEvent';
 export * from './ControllerConnectedEvent';
 export * from './EventPayloadByEvent';
 export * from './PlaybackActiveTrackChangedEvent';

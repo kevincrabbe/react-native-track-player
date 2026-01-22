@@ -25,6 +25,11 @@ enum EventType: String, CaseIterable {
     case MetadataTimedReceived = "metadata-timed-received"
     case MetadataCommonReceived = "metadata-common-received"
 
+    // Background Track Events
+    case BackgroundTrackChanged = "background-track-changed"
+    case BackgroundPlaybackState = "background-playback-state"
+    case BackgroundCrossfadeStarted = "background-crossfade-started"
+
     static func allRawValues() -> [String] {
         return allCases.map { $0.rawValue }
     }

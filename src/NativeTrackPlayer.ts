@@ -96,6 +96,16 @@ export interface Spec extends TurboModule {
     PITCH_ALGORITHM_VOICE: number;
   };
 
+  // background track methods
+  setBackgroundTrack(track: UnsafeObject | null): Promise<void>;
+  getBackgroundTrack(): Promise<UnsafeObject | null>;
+  setBackgroundVolume(volume: number): Promise<void>;
+  getBackgroundVolume(): Promise<number>;
+  playBackground(): Promise<void>;
+  pauseBackground(): Promise<void>;
+  setBackgroundCrossfade(options: UnsafeObject | null): Promise<void>;
+  getBackgroundState(): Promise<UnsafeObject>;
+
   // android methods
   acquireWakeLock(): Promise<void>;
   abandonWakeLock(): Promise<void>;

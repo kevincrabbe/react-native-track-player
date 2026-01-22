@@ -8,12 +8,15 @@ import android.net.Uri
 import android.os.Binder
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.provider.Settings
 import android.view.KeyEvent
 import androidx.annotation.MainThread
 import androidx.annotation.OptIn
 import androidx.media.utils.MediaConstants
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -69,6 +72,15 @@ class MusicService : HeadlessJsMediaService() {
     private var customLayout: List<CommandButton> = listOf()
     private var lastWake: Long = 0
     var onStartCommandIntentValid: Boolean = true
+
+    // Background player properties
+    private var backgroundPlayer: ExoPlayer? = null
+    private var backgroundTrack: Track? = null
+    private var backgroundVolume: Float = 1.0f
+    private var backgroundCrossfadeDuration: Double = 0.0
+    private var backgroundCrossfadeFadeInCurve: String = "linear"
+    private var backgroundCrossfadeFadeOutCurve: String = "linear"
+    private var crossfadeHandler: Handler? = null
 
     fun acquireWakeLock() {
         acquireWakeLockNow(this)
@@ -734,6 +746,8 @@ class MusicService : HeadlessJsMediaService() {
                 // HACK: the service first stops, then starts, then call onTaskRemove. Why system
                 // registers the service being restarted?
                 player.destroy()
+                // Clean up background player
+                destroyBackgroundPlayer()
                 scope.cancel()
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
@@ -798,6 +812,9 @@ class MusicService : HeadlessJsMediaService() {
             player.destroy()
         }
 
+        // Clean up background player
+        destroyBackgroundPlayer()
+
         progressUpdateJob?.cancel()
         super.onDestroy()
     }
@@ -855,6 +872,197 @@ class MusicService : HeadlessJsMediaService() {
             }
         }
         return null
+    }
+
+    // MARK: - Background Track Methods
+
+    private fun setupBackgroundPlayer() {
+        if (backgroundPlayer == null) {
+            backgroundPlayer = ExoPlayer.Builder(this).build().apply {
+                // Don't request audio focus for background player
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(C.USAGE_MEDIA)
+                        .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                        .build(),
+                    false // Don't handle audio focus
+                )
+                volume = backgroundVolume
+                repeatMode = Player.REPEAT_MODE_OFF
+
+                addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        handleBackgroundPlaybackStateChanged(playbackState)
+                    }
+
+                    override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                        emitBackgroundTrackChanged()
+                    }
+                })
+            }
+        }
+    }
+
+    @MainThread
+    fun setBackgroundTrack(track: Track?) {
+        setupBackgroundPlayer()
+
+        backgroundTrack = track
+        if (track != null) {
+            val mediaItem = MediaItem.Builder()
+                .setUri(track.uri)
+                .setMediaId(track.mediaId ?: track.queueId.toString())
+                .build()
+            backgroundPlayer?.setMediaItem(mediaItem)
+            backgroundPlayer?.prepare()
+        } else {
+            backgroundPlayer?.stop()
+            backgroundPlayer?.clearMediaItems()
+        }
+        emitBackgroundTrackChanged()
+    }
+
+    @MainThread
+    fun getBackgroundTrack(): Track? = backgroundTrack
+
+    @MainThread
+    fun setBackgroundVolume(volume: Float) {
+        backgroundVolume = volume
+        backgroundPlayer?.volume = volume
+    }
+
+    @MainThread
+    fun getBackgroundVolume(): Float = backgroundVolume
+
+    @MainThread
+    fun playBackground() {
+        backgroundPlayer?.play()
+    }
+
+    @MainThread
+    fun pauseBackground() {
+        backgroundPlayer?.pause()
+    }
+
+    @MainThread
+    fun setBackgroundCrossfade(duration: Double, fadeInCurve: String, fadeOutCurve: String) {
+        backgroundCrossfadeDuration = duration
+        backgroundCrossfadeFadeInCurve = fadeInCurve
+        backgroundCrossfadeFadeOutCurve = fadeOutCurve
+    }
+
+    @MainThread
+    fun clearBackgroundCrossfade() {
+        backgroundCrossfadeDuration = 0.0
+    }
+
+    @MainThread
+    fun getBackgroundState(): Bundle {
+        return Bundle().apply {
+            putBoolean("isPlaying", backgroundPlayer?.isPlaying == true)
+            putFloat("volume", backgroundVolume)
+            backgroundTrack?.let {
+                putBundle("track", it.originalItem)
+            }
+            if (backgroundCrossfadeDuration > 0) {
+                putBundle("crossfadeOptions", Bundle().apply {
+                    putDouble("duration", backgroundCrossfadeDuration)
+                    putString("fadeInCurve", backgroundCrossfadeFadeInCurve)
+                    putString("fadeOutCurve", backgroundCrossfadeFadeOutCurve)
+                })
+            }
+        }
+    }
+
+    private fun handleBackgroundPlaybackStateChanged(playbackState: Int) {
+        // Emit state change event
+        val event = Bundle().apply {
+            putString("state", when (playbackState) {
+                Player.STATE_IDLE -> "none"
+                Player.STATE_BUFFERING -> "buffering"
+                Player.STATE_READY -> if (backgroundPlayer?.isPlaying == true) "playing" else "ready"
+                Player.STATE_ENDED -> "ended"
+                else -> "none"
+            })
+        }
+        emit(MusicEvents.BACKGROUND_PLAYBACK_STATE, event)
+
+        // Handle looping with crossfade when track ends
+        if (playbackState == Player.STATE_ENDED) {
+            handleBackgroundTrackEnded()
+        }
+    }
+
+    private fun handleBackgroundTrackEnded() {
+        if (backgroundCrossfadeDuration > 0) {
+            // Emit crossfade started event
+            emit(MusicEvents.BACKGROUND_CROSSFADE_STARTED, Bundle())
+            performBackgroundCrossfade()
+        } else {
+            // Simple loop without crossfade
+            backgroundPlayer?.seekTo(0)
+            backgroundPlayer?.play()
+        }
+    }
+
+    private fun performBackgroundCrossfade() {
+        val bgPlayer = backgroundPlayer ?: return
+        val targetVolume = backgroundVolume
+        val fadeDurationMs = (backgroundCrossfadeDuration * 1000).toLong()
+        val steps = 20
+        val stepDurationMs = fadeDurationMs / steps
+        var currentStep = 0
+
+        // Start from 0 volume
+        bgPlayer.volume = 0f
+        bgPlayer.seekTo(0)
+        bgPlayer.play()
+
+        // Fade in using handler
+        crossfadeHandler?.removeCallbacksAndMessages(null)
+        crossfadeHandler = Handler(Looper.getMainLooper())
+
+        val fadeRunnable = object : Runnable {
+            override fun run() {
+                currentStep++
+                val progress = currentStep.toFloat() / steps.toFloat()
+                val curvedProgress = applyCurve(progress, backgroundCrossfadeFadeInCurve)
+                bgPlayer.volume = curvedProgress * targetVolume
+
+                if (currentStep < steps) {
+                    crossfadeHandler?.postDelayed(this, stepDurationMs)
+                } else {
+                    bgPlayer.volume = targetVolume
+                }
+            }
+        }
+        crossfadeHandler?.postDelayed(fadeRunnable, stepDurationMs)
+    }
+
+    private fun applyCurve(progress: Float, curve: String): Float {
+        return when (curve) {
+            "ease-in" -> progress * progress
+            "ease-out" -> 1 - (1 - progress) * (1 - progress)
+            "ease-in-out" -> if (progress < 0.5f) 2 * progress * progress else 1 - kotlin.math.pow((-2 * progress + 2).toDouble(), 2.0).toFloat() / 2
+            else -> progress // linear
+        }
+    }
+
+    private fun emitBackgroundTrackChanged() {
+        val event = Bundle().apply {
+            backgroundTrack?.let { putBundle("track", it.originalItem) }
+        }
+        emit(MusicEvents.BACKGROUND_TRACK_CHANGED, event)
+    }
+
+    // Clean up background player
+    @MainThread
+    private fun destroyBackgroundPlayer() {
+        crossfadeHandler?.removeCallbacksAndMessages(null)
+        crossfadeHandler = null
+        backgroundPlayer?.release()
+        backgroundPlayer = null
+        backgroundTrack = null
     }
 
     @MainThread

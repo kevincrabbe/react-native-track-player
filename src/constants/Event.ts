@@ -136,4 +136,16 @@ export enum Event {
    * typical controllers are media notification and Android Auto.
    **/
   AndroidConnectorDisconnected = 'android-controller-disconnected',
+  /**
+   * Fired when the background track changes.
+   **/
+  BackgroundTrackChanged = 'background-track-changed',
+  /**
+   * Fired when the background playback state changes.
+   **/
+  BackgroundPlaybackState = 'background-playback-state',
+  /**
+   * Fired when a crossfade between main and background track starts.
+   **/
+  BackgroundCrossfadeStarted = 'background-crossfade-started',
 }

@@ -28,6 +28,14 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
     private var sessionCategoryPolicy: AVAudioSession.RouteSharingPolicy = .default
     private var sessionCategoryOptions: AVAudioSession.CategoryOptions = []
 
+    // MARK: - Background Player Attributes
+    private var backgroundPlayer: AudioPlayer? = nil
+    private var backgroundVolume: Float = 1.0
+    private var backgroundCrossfadeDuration: Double = 0
+    private var backgroundCrossfadeFadeInCurve: String = "linear"
+    private var backgroundCrossfadeFadeOutCurve: String = "linear"
+    private var crossfadeTimer: Timer? = nil
+
     // MARK: - Lifecycle Methods
 
     public override init() {
@@ -46,6 +54,11 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
 
     deinit {
         reset(resolve: { _ in }, reject: { _, _, _  in })
+        // Clean up background player
+        crossfadeTimer?.invalidate()
+        crossfadeTimer = nil
+        backgroundPlayer?.stop()
+        backgroundPlayer = nil
     }
 
     // MARK: - RCTEventEmitter
@@ -673,6 +686,195 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
 
         Metadata.update(for: player, with: metadata)
         resolve(NSNull())
+    }
+
+    // MARK: - Background Track Methods
+
+    @objc public func setupBackgroundPlayer() {
+        if backgroundPlayer == nil {
+            backgroundPlayer = AudioPlayer()
+            backgroundPlayer?.volume = backgroundVolume
+            // Set up event listeners for background player
+            backgroundPlayer?.event.stateChange.addListener(self, handleBackgroundPlayerStateChange)
+            backgroundPlayer?.event.currentItem.addListener(self, handleBackgroundPlayerItemChange)
+        }
+    }
+
+    @objc public func setBackgroundTrack(_ trackDict: [String: Any]?, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        if (rejectWhenNotInitialized(reject: reject)) { return }
+        setupBackgroundPlayer()
+
+        if let trackDict = trackDict, let track = Track(dictionary: trackDict) {
+            backgroundPlayer?.load(item: track)
+            resolve(NSNull())
+        } else {
+            backgroundPlayer?.stop()
+            backgroundPlayer?.clear()
+            resolve(NSNull())
+        }
+    }
+
+    @objc public func getBackgroundTrack(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        if (rejectWhenNotInitialized(reject: reject)) { return }
+
+        if let track = backgroundPlayer?.currentItem as? Track {
+            resolve(track.toObject())
+        } else {
+            resolve(NSNull())
+        }
+    }
+
+    @objc public func setBackgroundVolume(_ volume: Float, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        if (rejectWhenNotInitialized(reject: reject)) { return }
+
+        backgroundVolume = volume
+        backgroundPlayer?.volume = volume
+        resolve(NSNull())
+    }
+
+    @objc public func getBackgroundVolume(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        if (rejectWhenNotInitialized(reject: reject)) { return }
+
+        resolve(backgroundVolume)
+    }
+
+    @objc public func playBackground(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        if (rejectWhenNotInitialized(reject: reject)) { return }
+
+        backgroundPlayer?.play()
+        resolve(NSNull())
+    }
+
+    @objc public func pauseBackground(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        if (rejectWhenNotInitialized(reject: reject)) { return }
+
+        backgroundPlayer?.pause()
+        resolve(NSNull())
+    }
+
+    @objc public func stopBackground(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        if (rejectWhenNotInitialized(reject: reject)) { return }
+
+        backgroundPlayer?.stop()
+        resolve(NSNull())
+    }
+
+    @objc public func setBackgroundCrossfade(_ options: [String: Any]?, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        if (rejectWhenNotInitialized(reject: reject)) { return }
+
+        if let options = options {
+            backgroundCrossfadeDuration = options["duration"] as? Double ?? 0
+            backgroundCrossfadeFadeInCurve = options["fadeInCurve"] as? String ?? "linear"
+            backgroundCrossfadeFadeOutCurve = options["fadeOutCurve"] as? String ?? "linear"
+        } else {
+            backgroundCrossfadeDuration = 0
+            backgroundCrossfadeFadeInCurve = "linear"
+            backgroundCrossfadeFadeOutCurve = "linear"
+        }
+        resolve(NSNull())
+    }
+
+    @objc public func getBackgroundState(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        if (rejectWhenNotInitialized(reject: reject)) { return }
+
+        var state: [String: Any] = [
+            "isPlaying": backgroundPlayer?.playerState == .playing,
+            "volume": backgroundVolume,
+        ]
+
+        if let track = backgroundPlayer?.currentItem as? Track {
+            state["track"] = track.toObject()
+        }
+
+        if backgroundCrossfadeDuration > 0 {
+            state["crossfadeOptions"] = [
+                "duration": backgroundCrossfadeDuration,
+                "fadeInCurve": backgroundCrossfadeFadeInCurve,
+                "fadeOutCurve": backgroundCrossfadeFadeOutCurve
+            ]
+        }
+
+        resolve(state)
+    }
+
+    // Background player event handlers
+    func handleBackgroundPlayerStateChange(state: AVPlayerWrapperState) {
+        emit(event: EventType.BackgroundPlaybackState, body: [
+            "state": State.fromPlayerState(state: state).rawValue
+        ])
+
+        // Handle looping with crossfade when track ends
+        if state == .ended {
+            handleBackgroundTrackEnded()
+        }
+    }
+
+    func handleBackgroundPlayerItemChange(item: AudioItem?, index: Int?, lastItem: AudioItem?, lastIndex: Int?, lastPosition: Double?) {
+        var body: [String: Any] = [:]
+        if let track = item as? Track {
+            body["track"] = track.toObject()
+        }
+        emit(event: EventType.BackgroundTrackChanged, body: body)
+    }
+
+    func handleBackgroundTrackEnded() {
+        guard let bgPlayer = backgroundPlayer, bgPlayer.currentItem != nil else { return }
+
+        if backgroundCrossfadeDuration > 0 {
+            // Emit crossfade started event
+            emit(event: EventType.BackgroundCrossfadeStarted, body: [:])
+
+            // Perform crossfade loop
+            performBackgroundCrossfade()
+        } else {
+            // Simple loop without crossfade
+            bgPlayer.seek(to: 0)
+            bgPlayer.play()
+        }
+    }
+
+    func performBackgroundCrossfade() {
+        guard let bgPlayer = backgroundPlayer else { return }
+
+        let targetVolume = backgroundVolume
+        let fadeDuration = backgroundCrossfadeDuration
+        let steps = 20
+        let stepDuration = fadeDuration / Double(steps)
+        var currentStep = 0
+
+        // Start from 0 volume
+        bgPlayer.volume = 0
+        bgPlayer.seek(to: 0)
+        bgPlayer.play()
+
+        // Fade in
+        crossfadeTimer?.invalidate()
+        crossfadeTimer = Timer.scheduledTimer(withTimeInterval: stepDuration, repeats: true) { [weak self] timer in
+            currentStep += 1
+            let progress = Float(currentStep) / Float(steps)
+
+            // Apply curve
+            let curvedProgress = self?.applyCurve(progress: progress, curve: self?.backgroundCrossfadeFadeInCurve ?? "linear") ?? progress
+            bgPlayer.volume = curvedProgress * targetVolume
+
+            if currentStep >= steps {
+                timer.invalidate()
+                bgPlayer.volume = targetVolume
+            }
+        }
+    }
+
+    func applyCurve(progress: Float, curve: String) -> Float {
+        switch curve {
+        case "ease-in":
+            return progress * progress
+        case "ease-out":
+            return 1 - (1 - progress) * (1 - progress)
+        case "ease-in-out":
+            return progress < 0.5 ? 2 * progress * progress : 1 - pow(-2 * progress + 2, 2) / 2
+        default: // linear
+            return progress
+        }
     }
 
     private func getPlaybackStateErrorKeyValues() -> Dictionary<String, Any> {

@@ -4,6 +4,9 @@ import type {
   AudioCommonMetadataReceivedEvent,
   AudioMetadataReceivedEvent,
 } from './AudioMetadataReceivedEvent';
+import type { BackgroundCrossfadeStartedEvent } from './BackgroundCrossfadeStartedEvent';
+import type { BackgroundPlaybackStateEvent } from './BackgroundPlaybackStateEvent';
+import type { BackgroundTrackChangedEvent } from './BackgroundTrackChangedEvent';
 import type {
   AndroidControllerConnectedEvent,
   AndroidControllerDisconnectedEvent,
@@ -55,6 +58,9 @@ export type EventPayloadByEvent = {
   [Event.MetadataCommonReceived]: AudioCommonMetadataReceivedEvent;
   [Event.AndroidConnectorConnected]: AndroidControllerConnectedEvent;
   [Event.AndroidConnectorDisconnected]: AndroidControllerDisconnectedEvent;
+  [Event.BackgroundTrackChanged]: BackgroundTrackChangedEvent;
+  [Event.BackgroundPlaybackState]: BackgroundPlaybackStateEvent;
+  [Event.BackgroundCrossfadeStarted]: BackgroundCrossfadeStartedEvent;
 };
 
 type Simplify<T> = { [KeyType in keyof T]: T[KeyType] } & {};

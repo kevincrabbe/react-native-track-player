@@ -57,6 +57,11 @@ class MusicEvents(private val reactContext: ReactContext) : BroadcastReceiver() 
         const val CONNECTOR_CONNECTED = "android-controller-connected"
         const val CONNECTOR_DISCONNECTED = "android-controller-disconnected"
 
+        // Background Track Events
+        const val BACKGROUND_TRACK_CHANGED = "background-track-changed"
+        const val BACKGROUND_PLAYBACK_STATE = "background-playback-state"
+        const val BACKGROUND_CROSSFADE_STARTED = "background-crossfade-started"
+
         const val EVENT_INTENT = "com.doublesymmetry.trackplayer.event"
     }
 }
