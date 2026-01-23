@@ -103,6 +103,7 @@ export interface Spec extends TurboModule {
   getBackgroundVolume(): Promise<number>;
   playBackground(): Promise<void>;
   pauseBackground(): Promise<void>;
+  stopBackground(): Promise<void>;
   setBackgroundCrossfade(options: UnsafeObject | null): Promise<void>;
   getBackgroundState(): Promise<UnsafeObject>;
 

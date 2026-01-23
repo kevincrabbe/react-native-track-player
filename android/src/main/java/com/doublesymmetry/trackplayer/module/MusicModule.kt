@@ -620,10 +620,18 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
     }
 
     @ReactMethod
+    fun stopBackground(promise: Promise) = launchInScope {
+        if (verifyServiceBoundOrReject(promise)) return@launchInScope
+
+        musicService.stopBackground()
+        promise.resolve(null)
+    }
+
+    @ReactMethod
     fun setBackgroundCrossfade(options: ReadableMap?, promise: Promise) = launchInScope {
         if (verifyServiceBoundOrReject(promise)) return@launchInScope
 
-        if (options != null) {
+        if (options != null && options.hasKey("duration")) {
             val duration = options.getDouble("duration")
             val fadeInCurve = if (options.hasKey("fadeInCurve")) options.getString("fadeInCurve") ?: "linear" else "linear"
             val fadeOutCurve = if (options.hasKey("fadeOutCurve")) options.getString("fadeOutCurve") ?: "linear" else "linear"

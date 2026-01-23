@@ -35,6 +35,7 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
     private var backgroundCrossfadeFadeInCurve: String = "linear"
     private var backgroundCrossfadeFadeOutCurve: String = "linear"
     private var crossfadeTimer: Timer? = nil
+    private var previousBackgroundTrack: Track? = nil
 
     // MARK: - Lifecycle Methods
 
@@ -704,6 +705,10 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
         if (rejectWhenNotInitialized(reject: reject)) { return }
         setupBackgroundPlayer()
 
+        // Cancel any ongoing crossfade when changing tracks
+        crossfadeTimer?.invalidate()
+        crossfadeTimer = nil
+
         if let trackDict = trackDict, let track = Track(dictionary: trackDict) {
             backgroundPlayer?.load(item: track)
             resolve(NSNull())
@@ -800,7 +805,9 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
     // Background player event handlers
     func handleBackgroundPlayerStateChange(state: AVPlayerWrapperState) {
         emit(event: EventType.BackgroundPlaybackState, body: [
-            "state": State.fromPlayerState(state: state).rawValue
+            "state": State.fromPlayerState(state: state).rawValue,
+            "isPlaying": state == .playing,
+            "volume": backgroundVolume
         ])
 
         // Handle looping with crossfade when track ends
@@ -811,18 +818,32 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
 
     func handleBackgroundPlayerItemChange(item: AudioItem?, index: Int?, lastItem: AudioItem?, lastIndex: Int?, lastPosition: Double?) {
         var body: [String: Any] = [:]
+
+        // Include previous track in the event
+        if let prevTrack = previousBackgroundTrack {
+            body["previousTrack"] = prevTrack.toObject()
+        }
+
         if let track = item as? Track {
             body["track"] = track.toObject()
         }
+
         emit(event: EventType.BackgroundTrackChanged, body: body)
+
+        // Update previous track reference for next change
+        previousBackgroundTrack = item as? Track
     }
 
     func handleBackgroundTrackEnded() {
         guard let bgPlayer = backgroundPlayer, bgPlayer.currentItem != nil else { return }
 
         if backgroundCrossfadeDuration > 0 {
-            // Emit crossfade started event
-            emit(event: EventType.BackgroundCrossfadeStarted, body: [:])
+            // Emit crossfade started event with useful data
+            emit(event: EventType.BackgroundCrossfadeStarted, body: [
+                "duration": backgroundCrossfadeDuration,
+                "position": bgPlayer.currentTime,
+                "trackDuration": bgPlayer.duration
+            ])
 
             // Perform crossfade loop
             performBackgroundCrossfade()
@@ -847,19 +868,28 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
         bgPlayer.seek(to: 0)
         bgPlayer.play()
 
-        // Fade in
+        // Fade in - must schedule timer on main thread
         crossfadeTimer?.invalidate()
-        crossfadeTimer = Timer.scheduledTimer(withTimeInterval: stepDuration, repeats: true) { [weak self] timer in
-            currentStep += 1
-            let progress = Float(currentStep) / Float(steps)
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.crossfadeTimer = Timer.scheduledTimer(withTimeInterval: stepDuration, repeats: true) { [weak self, weak bgPlayer] timer in
+                guard let self = self, let bgPlayer = bgPlayer else {
+                    timer.invalidate()
+                    return
+                }
 
-            // Apply curve
-            let curvedProgress = self?.applyCurve(progress: progress, curve: self?.backgroundCrossfadeFadeInCurve ?? "linear") ?? progress
-            bgPlayer.volume = curvedProgress * targetVolume
+                currentStep += 1
+                let progress = Float(currentStep) / Float(steps)
 
-            if currentStep >= steps {
-                timer.invalidate()
-                bgPlayer.volume = targetVolume
+                // Apply curve
+                let curvedProgress = self.applyCurve(progress: progress, curve: self.backgroundCrossfadeFadeInCurve)
+                bgPlayer.volume = curvedProgress * targetVolume
+
+                if currentStep >= steps {
+                    timer.invalidate()
+                    self.crossfadeTimer = nil
+                    bgPlayer.volume = targetVolume
+                }
             }
         }
     }

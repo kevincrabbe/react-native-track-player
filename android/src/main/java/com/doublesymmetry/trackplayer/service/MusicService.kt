@@ -76,6 +76,7 @@ class MusicService : HeadlessJsMediaService() {
     // Background player properties
     private var backgroundPlayer: ExoPlayer? = null
     private var backgroundTrack: Track? = null
+    private var previousBackgroundTrack: Track? = null
     private var backgroundVolume: Float = 1.0f
     private var backgroundCrossfadeDuration: Double = 0.0
     private var backgroundCrossfadeFadeInCurve: String = "linear"
@@ -905,8 +906,10 @@ class MusicService : HeadlessJsMediaService() {
 
     @MainThread
     fun setBackgroundTrack(track: Track?) {
+        crossfadeHandler?.removeCallbacksAndMessages(null)
         setupBackgroundPlayer()
 
+        previousBackgroundTrack = backgroundTrack
         backgroundTrack = track
         if (track != null) {
             val mediaItem = MediaItem.Builder()
@@ -942,6 +945,12 @@ class MusicService : HeadlessJsMediaService() {
     @MainThread
     fun pauseBackground() {
         backgroundPlayer?.pause()
+    }
+
+    @MainThread
+    fun stopBackground() {
+        crossfadeHandler?.removeCallbacksAndMessages(null)
+        backgroundPlayer?.stop()
     }
 
     @MainThread
@@ -984,6 +993,8 @@ class MusicService : HeadlessJsMediaService() {
                 Player.STATE_ENDED -> "ended"
                 else -> "none"
             })
+            putBoolean("isPlaying", backgroundPlayer?.isPlaying == true)
+            putFloat("volume", backgroundVolume)
         }
         emit(MusicEvents.BACKGROUND_PLAYBACK_STATE, event)
 
@@ -996,7 +1007,11 @@ class MusicService : HeadlessJsMediaService() {
     private fun handleBackgroundTrackEnded() {
         if (backgroundCrossfadeDuration > 0) {
             // Emit crossfade started event
-            emit(MusicEvents.BACKGROUND_CROSSFADE_STARTED, Bundle())
+            emit(MusicEvents.BACKGROUND_CROSSFADE_STARTED, Bundle().apply {
+                putDouble("duration", backgroundCrossfadeDuration)
+                putLong("position", backgroundPlayer?.currentPosition ?: 0)
+                putLong("trackDuration", backgroundPlayer?.duration ?: 0)
+            })
             performBackgroundCrossfade()
         } else {
             // Simple loop without crossfade
@@ -1024,15 +1039,20 @@ class MusicService : HeadlessJsMediaService() {
 
         val fadeRunnable = object : Runnable {
             override fun run() {
+                val player = backgroundPlayer ?: run {
+                    crossfadeHandler?.removeCallbacksAndMessages(null)
+                    return
+                }
                 currentStep++
                 val progress = currentStep.toFloat() / steps.toFloat()
                 val curvedProgress = applyCurve(progress, backgroundCrossfadeFadeInCurve)
-                bgPlayer.volume = curvedProgress * targetVolume
+                player.volume = curvedProgress * targetVolume
 
                 if (currentStep < steps) {
                     crossfadeHandler?.postDelayed(this, stepDurationMs)
                 } else {
-                    bgPlayer.volume = targetVolume
+                    player.volume = targetVolume
+                    crossfadeHandler?.removeCallbacksAndMessages(null)
                 }
             }
         }
@@ -1050,6 +1070,7 @@ class MusicService : HeadlessJsMediaService() {
 
     private fun emitBackgroundTrackChanged() {
         val event = Bundle().apply {
+            previousBackgroundTrack?.let { putBundle("previousTrack", it.originalItem) }
             backgroundTrack?.let { putBundle("track", it.originalItem) }
         }
         emit(MusicEvents.BACKGROUND_TRACK_CHANGED, event)

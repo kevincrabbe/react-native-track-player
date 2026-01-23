@@ -528,6 +528,15 @@ export async function pauseBackground(): Promise<void> {
 }
 
 /**
+ * Stops the background track and resets its position.
+ *
+ * @see https://rntp.dev/docs/api/functions/background#stopbackground
+ */
+export async function stopBackground(): Promise<void> {
+  return TrackPlayer.stopBackground();
+}
+
+/**
  * Sets the crossfade options for background track looping.
  *
  * When crossfade is enabled, the background track will smoothly fade out
