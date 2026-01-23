@@ -75,11 +75,15 @@ class MusicService : HeadlessJsMediaService() {
 
     // Background player properties
     private var backgroundPlayer: ExoPlayer? = null
+    private var backgroundPlayerListener: Player.Listener? = null
     private var backgroundTrack: Track? = null
     private var previousBackgroundTrack: Track? = null
     private var backgroundVolume: Float = 1.0f
     private var backgroundCrossfadeDuration: Double = 0.0
     private var backgroundCrossfadeFadeInCurve: String = "linear"
+    // Note: fadeOutCurve is stored for future true crossfade implementation where
+    // the old track fades out while the new track fades in simultaneously.
+    // Currently only fade-in after track end is implemented.
     private var backgroundCrossfadeFadeOutCurve: String = "linear"
     private var crossfadeHandler: Handler? = null
 
@@ -891,15 +895,31 @@ class MusicService : HeadlessJsMediaService() {
                 volume = backgroundVolume
                 repeatMode = Player.REPEAT_MODE_OFF
 
-                addListener(object : Player.Listener {
+                backgroundPlayerListener = object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
-                        handleBackgroundPlaybackStateChanged(playbackState)
+                        Handler(Looper.getMainLooper()).post {
+                            handleBackgroundPlaybackStateChanged(playbackState)
+                        }
                     }
 
                     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                        emitBackgroundTrackChanged()
+                        Handler(Looper.getMainLooper()).post {
+                            emitBackgroundTrackChanged()
+                        }
                     }
-                })
+
+                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                        Handler(Looper.getMainLooper()).post {
+                            emit(MusicEvents.BACKGROUND_PLAYBACK_STATE, Bundle().apply {
+                                putString("state", "error")
+                                putBoolean("isPlaying", false)
+                                putFloat("volume", backgroundVolume)
+                                putString("error", error.message)
+                            })
+                        }
+                    }
+                }
+                addListener(backgroundPlayerListener!!)
             }
         }
     }
@@ -1006,11 +1026,11 @@ class MusicService : HeadlessJsMediaService() {
 
     private fun handleBackgroundTrackEnded() {
         if (backgroundCrossfadeDuration > 0) {
-            // Emit crossfade started event
+            // Emit crossfade started event (convert milliseconds to seconds for consistency with iOS)
             emit(MusicEvents.BACKGROUND_CROSSFADE_STARTED, Bundle().apply {
                 putDouble("duration", backgroundCrossfadeDuration)
-                putLong("position", backgroundPlayer?.currentPosition ?: 0)
-                putLong("trackDuration", backgroundPlayer?.duration ?: 0)
+                putDouble("position", (backgroundPlayer?.currentPosition ?: 0).toDouble() / 1000.0)
+                putDouble("trackDuration", (backgroundPlayer?.duration ?: 0).toDouble() / 1000.0)
             })
             performBackgroundCrossfade()
         } else {
@@ -1022,6 +1042,15 @@ class MusicService : HeadlessJsMediaService() {
 
     private fun performBackgroundCrossfade() {
         val bgPlayer = backgroundPlayer ?: return
+
+        // Minimum duration check to avoid division by zero
+        if (backgroundCrossfadeDuration < 0.1) {
+            // Too short for crossfade, just restart
+            bgPlayer.seekTo(0)
+            bgPlayer.play()
+            return
+        }
+
         val targetVolume = backgroundVolume
         val fadeDurationMs = (backgroundCrossfadeDuration * 1000).toLong()
         val steps = 20
@@ -1081,9 +1110,13 @@ class MusicService : HeadlessJsMediaService() {
     private fun destroyBackgroundPlayer() {
         crossfadeHandler?.removeCallbacksAndMessages(null)
         crossfadeHandler = null
+        // Remove listener before releasing player to prevent callbacks on released player
+        backgroundPlayerListener?.let { backgroundPlayer?.removeListener(it) }
+        backgroundPlayerListener = null
         backgroundPlayer?.release()
         backgroundPlayer = null
         backgroundTrack = null
+        previousBackgroundTrack = null
     }
 
     @MainThread

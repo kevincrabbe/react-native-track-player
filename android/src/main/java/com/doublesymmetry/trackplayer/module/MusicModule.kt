@@ -607,16 +607,24 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
     fun playBackground(promise: Promise) = launchInScope {
         if (verifyServiceBoundOrReject(promise)) return@launchInScope
 
-        musicService.playBackground()
-        promise.resolve(null)
+        try {
+            musicService.playBackground()
+            promise.resolve(null)
+        } catch (e: Exception) {
+            promise.reject("playback_error", e.message, e)
+        }
     }
 
     @ReactMethod
     fun pauseBackground(promise: Promise) = launchInScope {
         if (verifyServiceBoundOrReject(promise)) return@launchInScope
 
-        musicService.pauseBackground()
-        promise.resolve(null)
+        try {
+            musicService.pauseBackground()
+            promise.resolve(null)
+        } catch (e: Exception) {
+            promise.reject("playback_error", e.message, e)
+        }
     }
 
     @ReactMethod

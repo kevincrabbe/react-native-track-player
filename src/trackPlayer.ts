@@ -468,8 +468,21 @@ export async function validateOnStartCommandIntent(): Promise<boolean> {
  * for ambient audio, background music, or other audio that should play
  * alongside the main content.
  *
- * @param track The track to set as the background track, or null to clear it.
- * @see https://rntp.dev/docs/api/functions/background#setbackgroundtrack
+ * @param track - The track to set as the background track, or null to clear it.
+ * @returns A promise that resolves when the background track is set.
+ *
+ * @example
+ * ```typescript
+ * // Set a background track
+ * await TrackPlayer.setBackgroundTrack({
+ *   url: 'https://example.com/ambient.mp3',
+ *   title: 'Ambient Music',
+ *   artist: 'Background Artist',
+ * });
+ *
+ * // Clear the background track
+ * await TrackPlayer.setBackgroundTrack(null);
+ * ```
  */
 export async function setBackgroundTrack(
   track: AddTrack | null
@@ -482,8 +495,16 @@ export async function setBackgroundTrack(
 /**
  * Gets the current background track.
  *
- * @returns The current background track, or null if no background track is set.
- * @see https://rntp.dev/docs/api/functions/background#getbackgroundtrack
+ * @returns A promise that resolves with the current background track,
+ * or null if no background track is set.
+ *
+ * @example
+ * ```typescript
+ * const backgroundTrack = await TrackPlayer.getBackgroundTrack();
+ * if (backgroundTrack) {
+ *   console.log('Background track:', backgroundTrack.title);
+ * }
+ * ```
  */
 export async function getBackgroundTrack(): Promise<Track | null> {
   return ((await TrackPlayer.getBackgroundTrack()) as Track) ?? null;
@@ -492,18 +513,33 @@ export async function getBackgroundTrack(): Promise<Track | null> {
 /**
  * Sets the volume of the background track.
  *
- * @param volume The volume as a number between 0 and 1.
- * @see https://rntp.dev/docs/api/functions/background#setbackgroundvolume
+ * @param volume - The volume as a number between 0 and 1.
+ * @returns A promise that resolves when the volume is set.
+ * @throws {Error} If volume is not between 0 and 1.
+ *
+ * @example
+ * ```typescript
+ * // Set background volume to 50%
+ * await TrackPlayer.setBackgroundVolume(0.5);
+ * ```
  */
 export async function setBackgroundVolume(volume: number): Promise<void> {
+  if (volume < 0 || volume > 1) {
+    throw new Error('Volume must be between 0 and 1');
+  }
   return TrackPlayer.setBackgroundVolume(volume);
 }
 
 /**
  * Gets the volume of the background track.
  *
- * @returns The volume as a number between 0 and 1.
- * @see https://rntp.dev/docs/api/functions/background#getbackgroundvolume
+ * @returns A promise that resolves with the volume as a number between 0 and 1.
+ *
+ * @example
+ * ```typescript
+ * const volume = await TrackPlayer.getBackgroundVolume();
+ * console.log('Background volume:', volume);
+ * ```
  */
 export async function getBackgroundVolume(): Promise<number> {
   return TrackPlayer.getBackgroundVolume();
@@ -512,7 +548,16 @@ export async function getBackgroundVolume(): Promise<number> {
 /**
  * Starts playback of the background track.
  *
- * @see https://rntp.dev/docs/api/functions/background#playbackground
+ * If no background track is set, this function has no effect.
+ * The background track will loop continuously until stopped or cleared.
+ *
+ * @returns A promise that resolves when playback starts.
+ *
+ * @example
+ * ```typescript
+ * await TrackPlayer.setBackgroundTrack({ url: 'https://example.com/ambient.mp3' });
+ * await TrackPlayer.playBackground();
+ * ```
  */
 export async function playBackground(): Promise<void> {
   return TrackPlayer.playBackground();
@@ -521,16 +566,33 @@ export async function playBackground(): Promise<void> {
 /**
  * Pauses playback of the background track.
  *
- * @see https://rntp.dev/docs/api/functions/background#pausebackground
+ * The current position is preserved so playback can be resumed with `playBackground()`.
+ *
+ * @returns A promise that resolves when playback is paused.
+ *
+ * @example
+ * ```typescript
+ * await TrackPlayer.pauseBackground();
+ * // Later, resume playback
+ * await TrackPlayer.playBackground();
+ * ```
  */
 export async function pauseBackground(): Promise<void> {
   return TrackPlayer.pauseBackground();
 }
 
 /**
- * Stops the background track and resets its position.
+ * Stops the background track and resets its position to the beginning.
  *
- * @see https://rntp.dev/docs/api/functions/background#stopbackground
+ * Unlike `pauseBackground()`, this resets the playback position.
+ * The background track remains loaded and can be played again with `playBackground()`.
+ *
+ * @returns A promise that resolves when playback is stopped.
+ *
+ * @example
+ * ```typescript
+ * await TrackPlayer.stopBackground();
+ * ```
  */
 export async function stopBackground(): Promise<void> {
   return TrackPlayer.stopBackground();
@@ -543,21 +605,54 @@ export async function stopBackground(): Promise<void> {
  * near the end and fade back in from the beginning when looping, creating
  * a seamless loop effect.
  *
- * @param options The crossfade options, or null to disable crossfade.
- * @see https://rntp.dev/docs/api/functions/background#setbackgroundcrossfade
+ * @param options - The crossfade options, or null to disable crossfade.
+ * @returns A promise that resolves when the crossfade options are set.
+ * @throws {Error} If crossfade duration is negative.
+ *
+ * @example
+ * ```typescript
+ * // Enable 2-second crossfade with ease-in-out curve
+ * await TrackPlayer.setBackgroundCrossfade({
+ *   duration: 2,
+ *   fadeInCurve: 'ease-in-out',
+ *   fadeOutCurve: 'ease-in-out',
+ * });
+ *
+ * // Disable crossfade
+ * await TrackPlayer.setBackgroundCrossfade(null);
+ * ```
  */
 export async function setBackgroundCrossfade(
   options: BackgroundCrossfadeOptions | null
 ): Promise<void> {
+  if (options !== null) {
+    if (options.duration < 0) {
+      throw new Error('Crossfade duration must be non-negative');
+    }
+    if (options.duration < 0.1 && options.duration > 0) {
+      console.warn(
+        'Crossfade duration less than 0.1s may not produce smooth results'
+      );
+    }
+  }
   return TrackPlayer.setBackgroundCrossfade(options);
 }
 
 /**
  * Gets the full state of the background track player.
  *
- * @returns The current background track state including track, playback status,
- * volume, and crossfade options.
- * @see https://rntp.dev/docs/api/functions/background#getbackgroundstate
+ * This includes the current track, playback status, volume, and crossfade options.
+ *
+ * @returns A promise that resolves with the current background track state.
+ *
+ * @example
+ * ```typescript
+ * const state = await TrackPlayer.getBackgroundState();
+ * console.log('Track:', state.track?.title);
+ * console.log('Playing:', state.isPlaying);
+ * console.log('Volume:', state.volume);
+ * console.log('Crossfade:', state.crossfadeOptions?.duration);
+ * ```
  */
 export async function getBackgroundState(): Promise<BackgroundTrackState> {
   return (await TrackPlayer.getBackgroundState()) as BackgroundTrackState;

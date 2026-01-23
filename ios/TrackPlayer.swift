@@ -35,7 +35,12 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
     private var backgroundCrossfadeFadeInCurve: String = "linear"
     private var backgroundCrossfadeFadeOutCurve: String = "linear"
     private var crossfadeTimer: Timer? = nil
+    private var positionMonitorTimer: Timer? = nil
     private var previousBackgroundTrack: Track? = nil
+    private var isCrossfading: Bool = false
+
+    // Serial dispatch queue for thread-safe timer operations (Issue #2)
+    private let backgroundPlayerQueue = DispatchQueue(label: "com.trackplayer.backgroundplayer")
 
     // MARK: - Lifecycle Methods
 
@@ -55,11 +60,22 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
 
     deinit {
         reset(resolve: { _ in }, reject: { _, _, _  in })
-        // Clean up background player
-        crossfadeTimer?.invalidate()
-        crossfadeTimer = nil
+        // Clean up background player (Issue #8)
+        destroyBackgroundPlayer()
+    }
+
+    // MARK: - Background Player Cleanup
+    private func destroyBackgroundPlayer() {
+        backgroundPlayerQueue.sync {
+            positionMonitorTimer?.invalidate()
+            positionMonitorTimer = nil
+            crossfadeTimer?.invalidate()
+            crossfadeTimer = nil
+            isCrossfading = false
+        }
         backgroundPlayer?.stop()
         backgroundPlayer = nil
+        previousBackgroundTrack = nil  // Issue #8: Clear previousBackgroundTrack
     }
 
     // MARK: - RCTEventEmitter
@@ -475,6 +491,19 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
 
         player.stop()
         player.clear()
+
+        // Issue #6: Clean up background player on reset
+        backgroundPlayerQueue.sync {
+            positionMonitorTimer?.invalidate()
+            positionMonitorTimer = nil
+            crossfadeTimer?.invalidate()
+            crossfadeTimer = nil
+            isCrossfading = false
+        }
+        backgroundPlayer?.stop()
+        backgroundPlayer = nil
+        previousBackgroundTrack = nil
+
         resolve(NSNull())
     }
 
@@ -698,6 +727,8 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
             // Set up event listeners for background player
             backgroundPlayer?.event.stateChange.addListener(self, handleBackgroundPlayerStateChange)
             backgroundPlayer?.event.currentItem.addListener(self, handleBackgroundPlayerItemChange)
+            // Issue #4: Register fail listener for background player
+            backgroundPlayer?.event.fail.addListener(self, handleBackgroundPlayerFailed)
         }
     }
 
@@ -705,17 +736,27 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
         if (rejectWhenNotInitialized(reject: reject)) { return }
         setupBackgroundPlayer()
 
-        // Cancel any ongoing crossfade when changing tracks
-        crossfadeTimer?.invalidate()
-        crossfadeTimer = nil
+        // Cancel any ongoing crossfade when changing tracks (Issue #2: thread-safe access)
+        backgroundPlayerQueue.sync {
+            positionMonitorTimer?.invalidate()
+            positionMonitorTimer = nil
+            crossfadeTimer?.invalidate()
+            crossfadeTimer = nil
+            isCrossfading = false
+        }
 
-        if let trackDict = trackDict, let track = Track(dictionary: trackDict) {
-            backgroundPlayer?.load(item: track)
-            resolve(NSNull())
-        } else {
-            backgroundPlayer?.stop()
-            backgroundPlayer?.clear()
-            resolve(NSNull())
+        // Issue #3: Error handling for background player operations
+        do {
+            if let trackDict = trackDict, let track = Track(dictionary: trackDict) {
+                backgroundPlayer?.load(item: track)
+                resolve(NSNull())
+            } else {
+                backgroundPlayer?.stop()
+                backgroundPlayer?.clear()
+                resolve(NSNull())
+            }
+        } catch {
+            reject("background_track_error", "Failed to set background track: \(error.localizedDescription)", error)
         }
     }
 
@@ -746,21 +787,56 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
     @objc public func playBackground(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
         if (rejectWhenNotInitialized(reject: reject)) { return }
 
-        backgroundPlayer?.play()
+        // Issue #3: Error handling for background player operations
+        guard let bgPlayer = backgroundPlayer else {
+            reject("background_player_error", "Background player not initialized", nil)
+            return
+        }
+
+        bgPlayer.play()
+        // Start position monitoring for crossfade (Issue #1)
+        startPositionMonitoring()
         resolve(NSNull())
     }
 
     @objc public func pauseBackground(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
         if (rejectWhenNotInitialized(reject: reject)) { return }
 
-        backgroundPlayer?.pause()
+        // Issue #3: Error handling for background player operations
+        guard let bgPlayer = backgroundPlayer else {
+            reject("background_player_error", "Background player not initialized", nil)
+            return
+        }
+
+        // Stop position monitoring when paused
+        backgroundPlayerQueue.sync {
+            positionMonitorTimer?.invalidate()
+            positionMonitorTimer = nil
+        }
+
+        bgPlayer.pause()
         resolve(NSNull())
     }
 
     @objc public func stopBackground(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
         if (rejectWhenNotInitialized(reject: reject)) { return }
 
-        backgroundPlayer?.stop()
+        // Issue #3: Error handling for background player operations
+        guard let bgPlayer = backgroundPlayer else {
+            reject("background_player_error", "Background player not initialized", nil)
+            return
+        }
+
+        // Stop position monitoring and crossfade when stopped
+        backgroundPlayerQueue.sync {
+            positionMonitorTimer?.invalidate()
+            positionMonitorTimer = nil
+            crossfadeTimer?.invalidate()
+            crossfadeTimer = nil
+            isCrossfading = false
+        }
+
+        bgPlayer.stop()
         resolve(NSNull())
     }
 
@@ -803,19 +879,46 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
     }
 
     // Background player event handlers
+    // Issue #7: Ensure thread-safe property access in event handlers
     func handleBackgroundPlayerStateChange(state: AVPlayerWrapperState) {
-        emit(event: EventType.BackgroundPlaybackState, body: [
-            "state": State.fromPlayerState(state: state).rawValue,
-            "isPlaying": state == .playing,
-            "volume": backgroundVolume
-        ])
+        // Capture values thread-safely
+        let volume = backgroundVolume
 
-        // Handle looping with crossfade when track ends
+        DispatchQueue.main.async { [weak self] in
+            self?.emit(event: EventType.BackgroundPlaybackState, body: [
+                "state": State.fromPlayerState(state: state).rawValue,
+                "isPlaying": state == .playing,
+                "volume": volume
+            ])
+        }
+
+        // Handle looping with crossfade when track ends (fallback for when position monitoring misses the end)
         if state == .ended {
             handleBackgroundTrackEnded()
         }
+
+        // Start position monitoring when playing
+        if state == .playing {
+            startPositionMonitoring()
+        }
     }
 
+    // Issue #4: Handle background player failures
+    func handleBackgroundPlayerFailed(error: Error?) {
+        let volume = backgroundVolume
+        let errorDescription = error?.localizedDescription ?? "Unknown error"
+
+        DispatchQueue.main.async { [weak self] in
+            self?.emit(event: EventType.BackgroundPlaybackState, body: [
+                "state": "error",
+                "isPlaying": false,
+                "volume": volume,
+                "error": errorDescription
+            ])
+        }
+    }
+
+    // Issue #7: Ensure thread-safe property access in event handlers
     func handleBackgroundPlayerItemChange(item: AudioItem?, index: Int?, lastItem: AudioItem?, lastIndex: Int?, lastPosition: Double?) {
         var body: [String: Any] = [:]
 
@@ -828,25 +931,89 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
             body["track"] = track.toObject()
         }
 
-        emit(event: EventType.BackgroundTrackChanged, body: body)
+        DispatchQueue.main.async { [weak self] in
+            self?.emit(event: EventType.BackgroundTrackChanged, body: body)
+        }
 
         // Update previous track reference for next change
         previousBackgroundTrack = item as? Track
     }
 
+    // Issue #1: Start position monitoring to trigger crossfade before track ends
+    func startPositionMonitoring() {
+        backgroundPlayerQueue.async { [weak self] in
+            guard let self = self else { return }
+
+            // Don't start if already crossfading
+            if self.isCrossfading { return }
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+
+                self.backgroundPlayerQueue.sync {
+                    self.positionMonitorTimer?.invalidate()
+                }
+
+                let timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] timer in
+                    guard let self = self,
+                          let bgPlayer = self.backgroundPlayer,
+                          bgPlayer.playerState == .playing else {
+                        return
+                    }
+
+                    let duration = bgPlayer.duration
+                    let position = bgPlayer.currentTime
+                    let crossfadeDuration = self.backgroundCrossfadeDuration
+
+                    // Check if we should start crossfade
+                    if crossfadeDuration > 0 && duration > 0 && position >= (duration - crossfadeDuration) {
+                        var shouldStartCrossfade = false
+                        self.backgroundPlayerQueue.sync {
+                            if !self.isCrossfading {
+                                self.isCrossfading = true
+                                shouldStartCrossfade = true
+                            }
+                        }
+
+                        if shouldStartCrossfade {
+                            self.performProperCrossfade(fromPosition: position, duration: duration)
+                        }
+                    }
+                }
+
+                self.backgroundPlayerQueue.sync {
+                    self.positionMonitorTimer = timer
+                }
+            }
+        }
+    }
+
     func handleBackgroundTrackEnded() {
+        // Check if we're already crossfading
+        var alreadyCrossfading = false
+        backgroundPlayerQueue.sync {
+            alreadyCrossfading = isCrossfading
+        }
+
+        if alreadyCrossfading {
+            return  // Crossfade already handled by position monitoring
+        }
+
         guard let bgPlayer = backgroundPlayer, bgPlayer.currentItem != nil else { return }
 
         if backgroundCrossfadeDuration > 0 {
             // Emit crossfade started event with useful data
-            emit(event: EventType.BackgroundCrossfadeStarted, body: [
-                "duration": backgroundCrossfadeDuration,
-                "position": bgPlayer.currentTime,
-                "trackDuration": bgPlayer.duration
-            ])
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.emit(event: EventType.BackgroundCrossfadeStarted, body: [
+                    "duration": self.backgroundCrossfadeDuration,
+                    "position": bgPlayer.currentTime,
+                    "trackDuration": bgPlayer.duration
+                ])
+            }
 
-            // Perform crossfade loop
-            performBackgroundCrossfade()
+            // Perform crossfade loop (fade-in only since track already ended)
+            performFadeInOnlyCrossfade()
         } else {
             // Simple loop without crossfade
             bgPlayer.seek(to: 0)
@@ -854,7 +1021,8 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
         }
     }
 
-    func performBackgroundCrossfade() {
+    // Issue #1: Proper crossfade implementation with fade-out AND fade-in
+    func performProperCrossfade(fromPosition: Double, duration: Double) {
         guard let bgPlayer = backgroundPlayer else { return }
 
         let targetVolume = backgroundVolume
@@ -862,17 +1030,31 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
         let steps = 20
         let stepDuration = fadeDuration / Double(steps)
         var currentStep = 0
+        let startVolume = bgPlayer.volume
 
-        // Start from 0 volume
-        bgPlayer.volume = 0
-        bgPlayer.seek(to: 0)
-        bgPlayer.play()
-
-        // Fade in - must schedule timer on main thread
-        crossfadeTimer?.invalidate()
+        // Emit crossfade started event
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            self.crossfadeTimer = Timer.scheduledTimer(withTimeInterval: stepDuration, repeats: true) { [weak self, weak bgPlayer] timer in
+            self.emit(event: EventType.BackgroundCrossfadeStarted, body: [
+                "duration": fadeDuration,
+                "position": fromPosition,
+                "trackDuration": duration
+            ])
+        }
+
+        // Stop position monitoring during crossfade
+        backgroundPlayerQueue.sync {
+            positionMonitorTimer?.invalidate()
+            positionMonitorTimer = nil
+            crossfadeTimer?.invalidate()
+            crossfadeTimer = nil
+        }
+
+        // Phase 1: Fade out current playback
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+
+            let fadeOutTimer = Timer.scheduledTimer(withTimeInterval: stepDuration, repeats: true) { [weak self, weak bgPlayer] timer in
                 guard let self = self, let bgPlayer = bgPlayer else {
                     timer.invalidate()
                     return
@@ -881,17 +1063,118 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
                 currentStep += 1
                 let progress = Float(currentStep) / Float(steps)
 
-                // Apply curve
-                let curvedProgress = self.applyCurve(progress: progress, curve: self.backgroundCrossfadeFadeInCurve)
-                bgPlayer.volume = curvedProgress * targetVolume
+                // Apply fade-out curve (Issue #1: Use fadeOutCurve)
+                let curvedProgress = self.applyCurve(progress: progress, curve: self.backgroundCrossfadeFadeOutCurve)
+                bgPlayer.volume = startVolume * (1.0 - curvedProgress)
 
                 if currentStep >= steps {
                     timer.invalidate()
-                    self.crossfadeTimer = nil
-                    bgPlayer.volume = targetVolume
+                    // Phase 2: Seek to beginning and fade in
+                    bgPlayer.seek(to: 0)
+                    self.performFadeIn(targetVolume: targetVolume, fadeDuration: fadeDuration)
                 }
             }
+
+            self.backgroundPlayerQueue.sync {
+                self.crossfadeTimer = fadeOutTimer
+            }
+
+            // Issue #5: Fallback if timer creation fails
+            var timerIsNil = false
+            self.backgroundPlayerQueue.sync {
+                timerIsNil = self.crossfadeTimer == nil
+            }
+            if timerIsNil {
+                bgPlayer.volume = 0
+                bgPlayer.seek(to: 0)
+                bgPlayer.volume = targetVolume
+                bgPlayer.play()
+                self.backgroundPlayerQueue.sync {
+                    self.isCrossfading = false
+                }
+                self.startPositionMonitoring()
+            }
         }
+    }
+
+    // Phase 2 of crossfade: Fade in from beginning
+    func performFadeIn(targetVolume: Float, fadeDuration: Double) {
+        guard let bgPlayer = backgroundPlayer else { return }
+
+        let steps = 20
+        let stepDuration = fadeDuration / Double(steps)
+        var currentStep = 0
+
+        // Start from 0 volume at position 0
+        bgPlayer.volume = 0
+        bgPlayer.play()
+
+        backgroundPlayerQueue.sync {
+            crossfadeTimer?.invalidate()
+            crossfadeTimer = nil
+        }
+
+        let fadeInTimer = Timer.scheduledTimer(withTimeInterval: stepDuration, repeats: true) { [weak self, weak bgPlayer] timer in
+            guard let self = self, let bgPlayer = bgPlayer else {
+                timer.invalidate()
+                return
+            }
+
+            currentStep += 1
+            let progress = Float(currentStep) / Float(steps)
+
+            // Apply fade-in curve
+            let curvedProgress = self.applyCurve(progress: progress, curve: self.backgroundCrossfadeFadeInCurve)
+            bgPlayer.volume = curvedProgress * targetVolume
+
+            if currentStep >= steps {
+                timer.invalidate()
+                self.backgroundPlayerQueue.sync {
+                    self.crossfadeTimer = nil
+                    self.isCrossfading = false
+                }
+                bgPlayer.volume = targetVolume
+
+                // Restart position monitoring
+                self.startPositionMonitoring()
+            }
+        }
+
+        backgroundPlayerQueue.sync {
+            crossfadeTimer = fadeInTimer
+        }
+
+        // Issue #5: Fallback if timer creation fails
+        var timerIsNil = false
+        backgroundPlayerQueue.sync {
+            timerIsNil = crossfadeTimer == nil
+        }
+        if timerIsNil {
+            bgPlayer.volume = targetVolume
+            backgroundPlayerQueue.sync {
+                isCrossfading = false
+            }
+            startPositionMonitoring()
+        }
+    }
+
+    // Fallback fade-in only (when track ends before position monitoring triggers)
+    func performFadeInOnlyCrossfade() {
+        guard let bgPlayer = backgroundPlayer else { return }
+
+        let targetVolume = backgroundVolume
+        let fadeDuration = backgroundCrossfadeDuration
+
+        backgroundPlayerQueue.sync {
+            isCrossfading = true
+        }
+
+        // Start from 0 volume
+        bgPlayer.volume = 0
+        bgPlayer.seek(to: 0)
+        bgPlayer.play()
+
+        performFadeIn(targetVolume: targetVolume, fadeDuration: fadeDuration)
     }
 
     func applyCurve(progress: Float, curve: String) -> Float {
