@@ -1,4 +1,4 @@
-<img src="https:/rntp.dev/img/optimized-logo.svg" width="300" />
+<img src="https://doublesymmetry.github.io/react-native-track-player/img/optimized-logo.svg" width="300" />
 
 [![downloads](https://img.shields.io/npm/dw/react-native-track-player.svg)](https://www.npmjs.com/package/react-native-track-player)
 [![npm](https://img.shields.io/npm/v/react-native-track-player.svg)](https://www.npmjs.com/package/react-native-track-player)
@@ -25,14 +25,14 @@ _[Blaze](https://runblaze.dev) sponsors RNTP by providing super fast Apple Silic
 
 ## Overview
 
-- [Documentation](https://rntp.dev)
-  * [Installation](https://rntp.dev/docs/basics/installation/)
-  * [Getting Started](https://rntp.dev/docs/basics/getting-started/)
-  * [API Docs](https://rntp.dev/docs/api/events)
-  * [Platform Support](https://rntp.dev/docs/basics/platform-support)
-  * [Background Mode](https://rntp.dev/docs/basics/background-mode)
-  * [Build Preferences](https://rntp.dev/docs/basics/build-preferences)
-  * [v2 Migration Guide](https://rntp.dev/docs/v2-migration)
+- [Documentation](https://doublesymmetry.github.io/react-native-track-player/)
+  * [Installation](https://doublesymmetry.github.io/react-native-track-player/docs/basics/installation/)
+  * [Getting Started](https://doublesymmetry.github.io/react-native-track-player/docs/basics/getting-started/)
+  * [API Docs](https://doublesymmetry.github.io/react-native-track-player/docs/api/events)
+  * [Platform Support](https://doublesymmetry.github.io/react-native-track-player/docs/basics/platform-support)
+  * [Background Mode](https://doublesymmetry.github.io/react-native-track-player/docs/basics/background-mode)
+  * [Build Preferences](https://doublesymmetry.github.io/react-native-track-player/docs/basics/build-preferences)
+  * [v2 Migration Guide](https://doublesymmetry.github.io/react-native-track-player/docs/v2-migration)
 - [Sponsors](#sponsors)
 - [Features](#features)
 - [Why another music module?](#why-another-music-module)
@@ -44,8 +44,8 @@ _[Blaze](https://runblaze.dev) sponsors RNTP by providing super fast Apple Silic
 
 Not sure where to start?
 
-1. Try [Getting Started](https://rntp.dev/docs/basics/getting-started).
-2. Peruse the [API Docs](https://rntp.dev/docs/api/events).
+1. Try [Getting Started](https://doublesymmetry.github.io/react-native-track-player/docs/basics/getting-started).
+2. Peruse the [API Docs](https://doublesymmetry.github.io/react-native-track-player/docs/api/events).
 3. Run the [Example Project](/example).
 
 ## Commerical Usage
@@ -78,7 +78,7 @@ All audio modules (like `react-native-sound`) don't play in a separated service 
 
 ## Example Setup
 
-First please take a look at the [Getting Started](https://rntp.dev/docs/basics/getting-started/) guide, but a basic example of how to play a track:
+First please take a look at the [Getting Started](https://doublesymmetry.github.io/react-native-track-player/docs/basics/getting-started/) guide, but a basic example of how to play a track:
 
 ```javascript
 import TrackPlayer from 'react-native-track-player';
