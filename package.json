@@ -1,5 +1,5 @@
 {
-  "name": "react-native-track-player",
+  "name": "@kevincrabbe/react-native-track-player",
   "version": "5.0.0-alpha0",
   "description": "A fully fledged audio module created for music apps",
   "main": "./lib/module/index.js",
@@ -88,13 +88,13 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/doublesymmetry/react-native-track-player.git"
+    "url": "git+https://github.com/kevincrabbe/react-native-track-player.git"
   },
   "bugs": {
-    "url": "https://github.com/doublesymmetry/react-native-track-player/issues"
+    "url": "https://github.com/kevincrabbe/react-native-track-player/issues"
   },
   "publishConfig": {
-    "registry": "https://registry.npmjs.org/"
+    "registry": "https://npm.pkg.github.com"
   },
   "peerDependencies": {
     "react": "*",
