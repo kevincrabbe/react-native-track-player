@@ -22,6 +22,8 @@ class Track: AudioItem, TimePitching, AssetOptionsProviding {
     var genre: String?
     var duration: Double?
     var artworkURL: MediaURL?
+    var backgroundURL: MediaURL?
+    var backgroundVolume: Float
     let headers: [String: Any]?
     var userAgent: String?
     let pitchAlgorithm: String?
@@ -35,6 +37,8 @@ class Track: AudioItem, TimePitching, AssetOptionsProviding {
     init?(dictionary: [String: Any]) {
         guard let url = MediaURL(object: dictionary["url"]) else { return nil }
         self.url = url
+        self.backgroundURL = MediaURL(object: dictionary["backgroundUrl"])
+        self.backgroundVolume = dictionary["backgroundVolume"] as? Float ?? 1.0
         self.headers = dictionary["headers"] as? [String: Any]
         self.userAgent = dictionary["userAgent"] as? String
         self.pitchAlgorithm = dictionary["pitchAlgorithm"] as? String

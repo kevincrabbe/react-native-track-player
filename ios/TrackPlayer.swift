@@ -2,6 +2,7 @@
 import Foundation
 import MediaPlayer
 import SwiftAudioEx
+import AVFoundation
 import React
 
 @objc(NativeTrackPlayerImpl)
@@ -27,6 +28,10 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
     private var sessionCategoryMode: AVAudioSession.Mode = .default
     private var sessionCategoryPolicy: AVAudioSession.RouteSharingPolicy = .default
     private var sessionCategoryOptions: AVAudioSession.CategoryOptions = []
+
+    // Background audio properties
+    private var backgroundPlayer: AVQueuePlayer?
+    private var backgroundLooper: AVPlayerLooper?
 
     // MARK: - Lifecycle Methods
 
@@ -66,6 +71,7 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
             if shouldResume {
                 if (shouldResumePlaybackAfterInterruptionEnds) {
                     player.play()
+                    syncBackgroundPlayState()
                 }
                 // Interruption Ended - playback should resume
                 emit(event: EventType.RemoteDuck, body: [
@@ -78,6 +84,52 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
                     "permanent": true
                 ])
             }
+        }
+    }
+
+    // MARK: - Background Audio
+
+    private func startBackground(for track: Track) {
+        stopBackground()
+
+        guard let backgroundURL = track.backgroundURL else { return }
+
+        let url = backgroundURL.value
+        let playerItem = AVPlayerItem(url: url)
+        let queuePlayer = AVQueuePlayer(items: [playerItem])
+        queuePlayer.volume = track.backgroundVolume
+        // Ensure background audio always plays at normal rate
+        queuePlayer.rate = 1.0
+
+        let looper = AVPlayerLooper(player: queuePlayer, templateItem: AVPlayerItem(url: url))
+
+        self.backgroundPlayer = queuePlayer
+        self.backgroundLooper = looper
+
+        // Match current play state of main player
+        if player.playerState == .playing {
+            queuePlayer.play()
+            // Reset rate to 1.0 after play (play sets rate to 1.0 by default, but be explicit)
+            queuePlayer.rate = 1.0
+        }
+    }
+
+    private func stopBackground() {
+        backgroundLooper?.disableLooping()
+        backgroundLooper = nil
+        backgroundPlayer?.pause()
+        backgroundPlayer?.removeAllItems()
+        backgroundPlayer = nil
+    }
+
+    private func syncBackgroundPlayState() {
+        guard let bgPlayer = backgroundPlayer else { return }
+        if player.playerState == .playing {
+            bgPlayer.play()
+            // Ensure background always plays at rate 1.0 regardless of main player rate
+            bgPlayer.rate = 1.0
+        } else {
+            bgPlayer.pause()
         }
     }
 
@@ -461,6 +513,7 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
 
         player.stop()
         player.clear()
+        stopBackground()
         resolve(NSNull())
     }
 
@@ -468,6 +521,7 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
     public func play(resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
         if (rejectWhenNotInitialized(reject: reject)) { return }
         player.play()
+        syncBackgroundPlayState()
         resolve(NSNull())
     }
 
@@ -476,6 +530,7 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
         if (rejectWhenNotInitialized(reject: reject)) { return }
 
         player.pause()
+        syncBackgroundPlayState()
         resolve(NSNull())
     }
 
@@ -497,6 +552,7 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
         if (rejectWhenNotInitialized(reject: reject)) { return }
 
         player.stop()
+        stopBackground()
         resolve(NSNull())
     }
 
@@ -505,6 +561,8 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
         if (rejectWhenNotInitialized(reject: reject)) { return }
 
         player.seek(to: time)
+        // Restart background audio from beginning when main track seeks
+        backgroundPlayer?.seek(to: .zero)
         resolve(NSNull())
     }
 
@@ -513,6 +571,8 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
         if (rejectWhenNotInitialized(reject: reject)) { return }
 
         player.seek(by: offset)
+        // Restart background audio from beginning when main track seeks
+        backgroundPlayer?.seek(to: .zero)
         resolve(NSNull())
     }
 
@@ -750,6 +810,11 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
         lastIndex: Int?,
         lastPosition: Double?
     ) {
+        // Handle background audio for track changes
+        stopBackground()
+        if let track = item as? Track {
+            startBackground(for: track)
+        }
 
         if let item = item {
             DispatchQueue.main.async {

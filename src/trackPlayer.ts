@@ -40,6 +40,7 @@ function resolveTrackAssets(track: AddTrack) {
     ...track,
     url: resolveImportedAssetOrPath(track.url),
     artwork: resolveImportedAssetOrPath(track.artwork),
+    backgroundUrl: resolveImportedAssetOrPath(track.backgroundUrl),
   };
 }
 

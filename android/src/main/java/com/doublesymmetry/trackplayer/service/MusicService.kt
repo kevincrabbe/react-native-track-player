@@ -69,6 +69,7 @@ class MusicService : HeadlessJsMediaService() {
     private var customLayout: List<CommandButton> = listOf()
     private var lastWake: Long = 0
     var onStartCommandIntentValid: Boolean = true
+    private var backgroundPlayer: ExoPlayer? = null
 
     fun acquireWakeLock() {
         acquireWakeLockNow(this)
@@ -363,6 +364,7 @@ class MusicService : HeadlessJsMediaService() {
     @MainThread
     fun load(track: Track) {
         player.load(track.toAudioItem())
+        startBackground(track)
     }
 
     @MainThread
@@ -383,21 +385,25 @@ class MusicService : HeadlessJsMediaService() {
     @MainThread
     fun clear() {
         player.clear()
+        stopBackground()
     }
 
     @MainThread
     fun play() {
         player.play()
+        backgroundPlayer?.play()
     }
 
     @MainThread
     fun pause() {
         player.pause()
+        backgroundPlayer?.pause()
     }
 
     @MainThread
     fun stop() {
         player.stop()
+        stopBackground()
     }
 
     @MainThread
@@ -428,11 +434,13 @@ class MusicService : HeadlessJsMediaService() {
     @MainThread
     fun seekTo(seconds: Float) {
         player.seek((seconds * 1000).toLong(), TimeUnit.MILLISECONDS)
+        backgroundPlayer?.seekTo(0)
     }
 
     @MainThread
     fun seekBy(offset: Float) {
         player.seekBy((offset.toLong()), TimeUnit.SECONDS)
+        backgroundPlayer?.seekTo(0)
     }
 
     @MainThread
@@ -543,6 +551,8 @@ class MusicService : HeadlessJsMediaService() {
                         player.previousIndex,
                         (it?.oldPosition ?: 0).toSeconds()
                     )
+                    // Start background audio for new track
+                    currentTrack?.let { track -> startBackground(track) }
                 }
             }
         }
@@ -671,6 +681,42 @@ class MusicService : HeadlessJsMediaService() {
         return bundle
     }
 
+    @MainThread
+    private fun startBackground(track: Track) {
+        stopBackground()
+        val url = track.backgroundUrl ?: return
+        val bgPlayer = ExoPlayer.Builder(this).build().apply {
+            repeatMode = Player.REPEAT_MODE_ONE
+            volume = track.backgroundVolume
+            setMediaItem(MediaItem.fromUri(url))
+            prepare()
+        }
+        backgroundPlayer = bgPlayer
+        if (player.isPlaying) {
+            bgPlayer.play()
+        }
+    }
+
+    @MainThread
+    private fun stopBackground() {
+        backgroundPlayer?.let {
+            it.stop()
+            it.clearMediaItems()
+            it.release()
+        }
+        backgroundPlayer = null
+    }
+
+    @MainThread
+    private fun syncBackgroundPlayState() {
+        val bgPlayer = backgroundPlayer ?: return
+        if (player.isPlaying) {
+            bgPlayer.play()
+        } else {
+            bgPlayer.pause()
+        }
+    }
+
     @SuppressLint("VisibleForTests")
     @MainThread
     fun emit(event: String, data: Bundle? = null) {
@@ -792,6 +838,8 @@ class MusicService : HeadlessJsMediaService() {
 
     @MainThread
     override fun onDestroy() {
+        stopBackground()
+
         if (::player.isInitialized) {
             Timber.d("Releasing media session and destroying player")
             mediaSession.release()

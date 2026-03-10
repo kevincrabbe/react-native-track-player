@@ -6,6 +6,7 @@ export class Player {
   protected hasInitialized = false;
   protected element?: HTMLMediaElement;
   protected player?: shaka.Player;
+  protected backgroundElement?: HTMLAudioElement;
   protected _current?: Track = undefined;
   protected _playWhenReady = false;
   protected _state: PlaybackState = { state: State.None };
@@ -130,12 +131,34 @@ export class Player {
   }
 
   /**
+   * background audio control
+   */
+  protected startBackground(track: Track) {
+    if (!track.backgroundUrl) return;
+    this.backgroundElement = new Audio(track.backgroundUrl as string);
+    this.backgroundElement.loop = true;
+    this.backgroundElement.volume = track.backgroundVolume ?? 1.0;
+    if (this._playWhenReady) {
+      this.backgroundElement.play().catch((err) => console.error(err));
+    }
+  }
+
+  protected stopBackground() {
+    if (!this.backgroundElement) return;
+    this.backgroundElement.pause();
+    this.backgroundElement.src = '';
+    this.backgroundElement = undefined;
+  }
+
+  /**
    * player control
    */
   public async load(track: Track) {
     if (!this.player) throw new SetupNotCalledError();
     await this.player.load(track.url as string);
     this.current = track;
+    this.stopBackground();
+    this.startBackground(track);
   }
 
   public async retry() {
@@ -146,12 +169,14 @@ export class Player {
   public async stop() {
     if (!this.player) throw new SetupNotCalledError();
     this.current = undefined;
+    this.stopBackground();
     await this.player.unload();
   }
 
   public play() {
     if (!this.element) throw new SetupNotCalledError();
     this.playWhenReady = true;
+    this.backgroundElement?.play().catch((err) => console.error(err));
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return this.element.play().catch((err: any) => console.error(err));
   }
@@ -159,6 +184,7 @@ export class Player {
   public pause() {
     if (!this.element) throw new SetupNotCalledError();
     this.playWhenReady = false;
+    this.backgroundElement?.pause();
     return this.element.pause();
   }
 
@@ -176,11 +202,17 @@ export class Player {
   public seekBy(offset: number) {
     if (!this.element) throw new SetupNotCalledError();
     this.element.currentTime += offset;
+    if (this.backgroundElement) {
+      this.backgroundElement.currentTime = 0;
+    }
   }
 
   public seekTo(seconds: number) {
     if (!this.element) throw new SetupNotCalledError();
     this.element.currentTime = seconds;
+    if (this.backgroundElement) {
+      this.backgroundElement.currentTime = 0;
+    }
   }
 
   public setVolume(volume: number) {

@@ -4,6 +4,10 @@ import type { TrackMetadataBase } from './TrackMetadataBase';
 
 export interface Track extends TrackMetadataBase {
   url: string;
+  /** URL for background audio that plays alongside the main track and loops. */
+  backgroundUrl?: string;
+  /** Volume for background audio (0.0–1.0, default 1.0). */
+  backgroundVolume?: number;
   type?: TrackType;
   /** The user agent HTTP header */
   userAgent?: string;
@@ -20,4 +24,5 @@ export interface Track extends TrackMetadataBase {
 export type AddTrack = Track & {
   url: string | ResourceObject;
   artwork?: string | ResourceObject;
+  backgroundUrl?: string | ResourceObject;
 };

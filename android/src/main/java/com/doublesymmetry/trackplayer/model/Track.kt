@@ -25,6 +25,8 @@ class Track
     var originalItem: Bundle
     var headers: HashMap<String, String>? = null
     val queueId: Long
+    var backgroundUrl: Uri? = null
+    var backgroundVolume: Float = 1.0f
 
     override fun setMetadata(context: Context, bundle: Bundle?, ratingType: Int) {
         super.setMetadata(context, bundle, ratingType)
@@ -74,6 +76,12 @@ class Track
                 headers!![header] = httpHeaders.getString(header)!!
             }
         }
+        // Parse background audio fields
+        if (bundle.containsKey("backgroundUrl")) {
+            backgroundUrl = BundleUtils.getUri(context, bundle, "backgroundUrl")
+        }
+        backgroundVolume = bundle.getDouble("backgroundVolume", 1.0).toFloat()
+
         setMetadata(context, bundle, ratingType)
         queueId = System.currentTimeMillis()
     }
