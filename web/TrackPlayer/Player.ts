@@ -137,7 +137,10 @@ export class Player {
     if (!track.backgroundUrl) return;
     this.backgroundElement = new Audio(track.backgroundUrl as string);
     this.backgroundElement.loop = true;
-    this.backgroundElement.volume = track.backgroundVolume ?? 1.0;
+    this.backgroundElement.volume = Math.min(
+      Math.max(track.backgroundVolume ?? 1.0, 0),
+      1
+    );
     if (this._playWhenReady) {
       this.backgroundElement.play().catch((err) => console.error(err));
     }

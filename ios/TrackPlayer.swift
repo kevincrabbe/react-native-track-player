@@ -97,19 +97,16 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
         let url = backgroundURL.value
         let playerItem = AVPlayerItem(url: url)
         let queuePlayer = AVQueuePlayer(items: [playerItem])
-        queuePlayer.volume = track.backgroundVolume
-        // Ensure background audio always plays at normal rate
-        queuePlayer.rate = 1.0
+        queuePlayer.volume = min(max(track.backgroundVolume, 0.0), 1.0)
 
         let looper = AVPlayerLooper(player: queuePlayer, templateItem: AVPlayerItem(url: url))
 
         self.backgroundPlayer = queuePlayer
         self.backgroundLooper = looper
 
-        // Match current play state of main player
+        // Only start playing if main player is currently playing
         if player.playerState == .playing {
             queuePlayer.play()
-            // Reset rate to 1.0 after play (play sets rate to 1.0 by default, but be explicit)
             queuePlayer.rate = 1.0
         }
     }

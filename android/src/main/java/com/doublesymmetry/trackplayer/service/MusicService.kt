@@ -391,13 +391,13 @@ class MusicService : HeadlessJsMediaService() {
     @MainThread
     fun play() {
         player.play()
-        backgroundPlayer?.play()
+        syncBackgroundPlayState()
     }
 
     @MainThread
     fun pause() {
         player.pause()
-        backgroundPlayer?.pause()
+        syncBackgroundPlayState()
     }
 
     @MainThread
@@ -687,7 +687,7 @@ class MusicService : HeadlessJsMediaService() {
         val url = track.backgroundUrl ?: return
         val bgPlayer = ExoPlayer.Builder(this).build().apply {
             repeatMode = Player.REPEAT_MODE_ONE
-            volume = track.backgroundVolume
+            volume = track.backgroundVolume.coerceIn(0f, 1f)
             setMediaItem(MediaItem.fromUri(url))
             prepare()
         }
