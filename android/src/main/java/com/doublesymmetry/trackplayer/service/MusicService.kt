@@ -160,6 +160,7 @@ class MusicService : HeadlessJsMediaService() {
         get() = player.playWhenReady
         set(value) {
             player.playWhenReady = value
+            syncBackgroundPlayState()
         }
 
     private var latestOptions: Bundle? = null
@@ -418,16 +419,19 @@ class MusicService : HeadlessJsMediaService() {
 
     @MainThread
     fun skip(index: Int) {
+        stopBackground()
         player.jumpToItem(index)
     }
 
     @MainThread
     fun skipToNext() {
+        stopBackground()
         player.next()
     }
 
     @MainThread
     fun skipToPrevious() {
+        stopBackground()
         player.previous()
     }
 
@@ -696,9 +700,12 @@ class MusicService : HeadlessJsMediaService() {
             addListener(object : Player.Listener {
                 override fun onPlayerError(error: PlaybackException) {
                     Timber.w(error, "Background audio playback error")
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        stopBackground()
+                    stopBackground()
+                    val bundle = Bundle().apply {
+                        putString("message", error.message ?: "Background audio playback error")
+                        putString("code", "android-background-error")
                     }
+                    emit(MusicEvents.PLAYBACK_BACKGROUND_ERROR, bundle)
                 }
             })
             setMediaItem(MediaItem.fromUri(url))
@@ -713,7 +720,11 @@ class MusicService : HeadlessJsMediaService() {
     @MainThread
     fun setBackgroundVolume(volume: Float) {
         backgroundPlayer?.volume = volume.coerceIn(0f, 1f)
+        currentTrack?.backgroundVolume = volume.coerceIn(0f, 1f)
     }
+
+    @MainThread
+    fun getBackgroundVolume(): Float = backgroundPlayer?.volume ?: (currentTrack?.backgroundVolume ?: 1.0f)
 
     @MainThread
     private fun stopBackground() {

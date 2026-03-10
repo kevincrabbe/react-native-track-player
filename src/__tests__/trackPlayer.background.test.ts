@@ -16,6 +16,7 @@ jest.mock('../NativeTrackPlayer', () => ({
     load: jest.fn().mockResolvedValue(undefined),
     setVolume: jest.fn().mockResolvedValue(undefined),
     setBackgroundVolume: jest.fn().mockResolvedValue(undefined),
+    getBackgroundVolume: jest.fn().mockResolvedValue(0.8),
     seekTo: jest.fn().mockResolvedValue(undefined),
     seekBy: jest.fn().mockResolvedValue(undefined),
     add: jest.fn().mockResolvedValue(undefined),
@@ -70,6 +71,14 @@ describe('TrackPlayer - Background Audio API', () => {
 
       await TrackPlayer.setBackgroundVolume(1);
       expect(mockNative.setBackgroundVolume).toHaveBeenCalledWith(1);
+    });
+  });
+
+  describe('getBackgroundVolume', () => {
+    it('should call native getBackgroundVolume', async () => {
+      const volume = await TrackPlayer.getBackgroundVolume();
+      expect(mockNative.getBackgroundVolume).toHaveBeenCalled();
+      expect(volume).toBe(0.8);
     });
   });
 

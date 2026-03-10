@@ -116,6 +116,10 @@ export class Player {
     this.state = { state };
   }
 
+  protected onBackgroundError(url: string) {
+    console.warn('Background audio failed to load:', url);
+  }
+
   protected onError(error: { code: number; message: string }) {
     // unload the current track to allow for clean playback on other
     this.player?.unload();
@@ -144,7 +148,7 @@ export class Player {
       1
     );
     this.backgroundErrorHandler = () => {
-      console.warn('Background audio failed to load:', track.backgroundUrl);
+      this.onBackgroundError(track.backgroundUrl as string);
       this.stopBackground();
     };
     this.backgroundElement.addEventListener(
@@ -241,6 +245,7 @@ export class Player {
   }
 
   public setBackgroundVolume(volume: number) {
+    if (!this.player) throw new SetupNotCalledError();
     const clamped = Math.min(Math.max(volume, 0), 1);
     if (this.backgroundElement) {
       this.backgroundElement.volume = clamped;
@@ -248,6 +253,13 @@ export class Player {
     if (this._current) {
       this._current.backgroundVolume = clamped;
     }
+  }
+
+  public getBackgroundVolume(): number {
+    if (!this.player) throw new SetupNotCalledError();
+    return (
+      this.backgroundElement?.volume ?? this._current?.backgroundVolume ?? 1.0
+    );
   }
 
   public getVolume() {

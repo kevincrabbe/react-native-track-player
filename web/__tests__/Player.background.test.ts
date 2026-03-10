@@ -272,8 +272,16 @@ describe('Player - Background Audio', () => {
   });
 
   describe('setBackgroundVolume', () => {
+    it('should throw SetupNotCalledError if player not initialized', () => {
+      const player = new TestablePlayer();
+      expect(() => player.setBackgroundVolume(0.5)).toThrow(
+        'You must call `setupPlayer` prior to interacting with the player.'
+      );
+    });
+
     it('should set volume on existing background element', () => {
       const player = new TestablePlayer();
+      player.internalPlayer = {} as unknown as shaka.Player;
       player.startBg(
         makeTrack({ backgroundUrl: 'https://example.com/bg.mp3' })
       );
@@ -284,6 +292,7 @@ describe('Player - Background Audio', () => {
 
     it('should clamp volume to [0, 1]', () => {
       const player = new TestablePlayer();
+      player.internalPlayer = {} as unknown as shaka.Player;
       player.startBg(
         makeTrack({ backgroundUrl: 'https://example.com/bg.mp3' })
       );
@@ -297,7 +306,43 @@ describe('Player - Background Audio', () => {
 
     it('should be a no-op when no background element exists', () => {
       const player = new TestablePlayer();
+      player.internalPlayer = {} as unknown as shaka.Player;
       player.setBackgroundVolume(0.5);
+    });
+  });
+
+  describe('getBackgroundVolume', () => {
+    it('should return background element volume when background is playing', () => {
+      const player = new TestablePlayer();
+      player.internalPlayer = {} as unknown as shaka.Player;
+      player.startBg(
+        makeTrack({
+          backgroundUrl: 'https://example.com/bg.mp3',
+          backgroundVolume: 0.5,
+        })
+      );
+
+      expect(player.getBackgroundVolume()).toBe(0.5);
+    });
+
+    it('should return current track backgroundVolume when no background element', () => {
+      const player = new TestablePlayer();
+      player.internalPlayer = {} as unknown as shaka.Player;
+      player.current = makeTrack({ backgroundVolume: 0.7 });
+
+      expect(player.getBackgroundVolume()).toBe(0.7);
+    });
+
+    it('should return 1.0 when no background element and no current track', () => {
+      const player = new TestablePlayer();
+      player.internalPlayer = {} as unknown as shaka.Player;
+
+      expect(player.getBackgroundVolume()).toBe(1.0);
+    });
+
+    it('should throw SetupNotCalledError if player not initialized', () => {
+      const player = new TestablePlayer();
+      expect(() => player.getBackgroundVolume()).toThrow();
     });
   });
 

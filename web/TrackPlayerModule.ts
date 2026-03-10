@@ -65,6 +65,14 @@ export class TrackPlayerModule extends PlaylistPlayer implements Spec {
     this.emitter.emit(Event.PlaybackState, newState);
   }
 
+  protected onBackgroundError(url: string) {
+    super.onBackgroundError(url);
+    this.emitter.emit(Event.PlaybackBackgroundError, {
+      message: `Background audio failed to load: ${url}`,
+      code: 'web-background-error',
+    });
+  }
+
   public async updateOptions(options: UpdateOptions) {
     this.setupProgressUpdates(options.progressUpdateEventInterval);
   }
@@ -181,6 +189,10 @@ export class TrackPlayerModule extends PlaylistPlayer implements Spec {
   }
   public async setBackgroundVolume(volume: number) {
     return super.setBackgroundVolume(volume);
+  }
+  // @ts-expect-error - promise return
+  public async getBackgroundVolume() {
+    return super.getBackgroundVolume();
   }
   // @ts-expect-error - promise return
   public async getVolume() {

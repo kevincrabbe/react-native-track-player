@@ -5,6 +5,8 @@ export enum Event {
   PlaybackState = 'playback-state',
   /** Fired when a playback error occurs. */
   PlaybackError = 'playback-error',
+  /** Fired when background audio encounters an error. */
+  PlaybackBackgroundError = 'playback-background-error',
   /** Fired after playback has paused due to the queue having reached the end. */
   PlaybackQueueEnded = 'playback-queue-ended',
   /**

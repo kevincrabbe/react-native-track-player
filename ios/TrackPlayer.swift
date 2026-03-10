@@ -51,6 +51,7 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
     }
 
     deinit {
+        stopBackground()
         reset(resolve: { _ in }, reject: { _, _, _  in })
     }
 
@@ -107,12 +108,21 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
 
         self.backgroundErrorObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemFailedToPlayToEndTime,
-            object: templateItem,
+            object: nil,
             queue: .main
         ) { [weak self] notification in
+            guard let self = self else { return }
+            // Only handle errors from items belonging to our background player
+            guard let failedItem = notification.object as? AVPlayerItem,
+                  let bgPlayer = self.backgroundPlayer,
+                  bgPlayer.items().contains(failedItem) else { return }
             let error = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
             print("[RNTP] Background audio error: \(error?.localizedDescription ?? "unknown")")
-            self?.stopBackground()
+            self.delegate?.sendEvent(name: EventType.PlaybackBackgroundError.rawValue, body: [
+                "message": error?.localizedDescription ?? "Background audio playback error",
+                "code": "ios-background-error"
+            ])
+            self.stopBackground()
         }
 
         // Only start playing if main player is currently playing
@@ -140,6 +150,13 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
         } else {
             bgPlayer.pause()
         }
+    }
+
+    @objc
+    public func getBackgroundVolume(resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
+        if (rejectWhenNotInitialized(reject: reject)) { return }
+        let volume = backgroundPlayer?.volume ?? (player.currentItem as? Track)?.backgroundVolume ?? 1.0
+        resolve(volume)
     }
 
     @objc

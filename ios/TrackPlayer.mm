@@ -85,6 +85,10 @@ RCT_EXPORT_MODULE()
   [nativeTrackPlayer getTrackWithIndex:index resolve:resolve reject:reject];
 }
 
+- (void)getBackgroundVolume:(nonnull RCTPromiseResolveBlock)resolve reject:(nonnull RCTPromiseRejectBlock)reject {
+  [nativeTrackPlayer getBackgroundVolumeWithResolve:resolve reject:reject];
+}
+
 - (void)getVolume:(nonnull RCTPromiseResolveBlock)resolve reject:(nonnull RCTPromiseRejectBlock)reject {
   [nativeTrackPlayer getVolumeWithResolve:resolve reject:reject];
 }
