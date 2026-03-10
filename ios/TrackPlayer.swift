@@ -95,19 +95,18 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
         guard let backgroundURL = track.backgroundURL else { return }
 
         let url = backgroundURL.value
-        let playerItem = AVPlayerItem(url: url)
-        let queuePlayer = AVQueuePlayer(items: [playerItem])
+        let queuePlayer = AVQueuePlayer()
         queuePlayer.volume = min(max(track.backgroundVolume, 0.0), 1.0)
 
-        let looper = AVPlayerLooper(player: queuePlayer, templateItem: AVPlayerItem(url: url))
+        let templateItem = AVPlayerItem(url: url)
+        let looper = AVPlayerLooper(player: queuePlayer, templateItem: templateItem)
 
         self.backgroundPlayer = queuePlayer
         self.backgroundLooper = looper
 
         // Only start playing if main player is currently playing
-        if player.playerState == .playing {
+        if player.playWhenReady {
             queuePlayer.play()
-            queuePlayer.rate = 1.0
         }
     }
 
@@ -121,13 +120,19 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
 
     private func syncBackgroundPlayState() {
         guard let bgPlayer = backgroundPlayer else { return }
-        if player.playerState == .playing {
+        if player.playWhenReady {
             bgPlayer.play()
-            // Ensure background always plays at rate 1.0 regardless of main player rate
-            bgPlayer.rate = 1.0
         } else {
             bgPlayer.pause()
         }
+    }
+
+    @objc
+    public func setBackgroundVolume(volume: Float, resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
+        if (rejectWhenNotInitialized(reject: reject)) { return }
+        let clampedVolume = min(max(volume, 0.0), 1.0)
+        backgroundPlayer?.volume = clampedVolume
+        resolve(NSNull())
     }
 
     // MARK: - Bridged Methods
@@ -393,6 +398,7 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
         }
 
         player.load(item: track)
+        startBackground(for: track)
         resolve(player.currentIndex)
     }
 
@@ -535,6 +541,13 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
     public func setPlayWhenReady(playWhenReady: Bool, resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
         if (rejectWhenNotInitialized(reject: reject)) { return }
         player.playWhenReady = playWhenReady
+        if let bgPlayer = backgroundPlayer {
+            if playWhenReady {
+                bgPlayer.play()
+            } else {
+                bgPlayer.pause()
+            }
+        }
         resolve(NSNull())
     }
 

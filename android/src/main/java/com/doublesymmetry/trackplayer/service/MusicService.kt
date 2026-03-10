@@ -20,6 +20,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.CacheBitmapLoader
 import androidx.media3.session.LibraryResult
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Rating
 import androidx.media3.common.util.BitmapLoader
 import androidx.media3.exoplayer.ExoPlayer
@@ -159,6 +160,12 @@ class MusicService : HeadlessJsMediaService() {
         get() = player.playWhenReady
         set(value) {
             player.playWhenReady = value
+            val bgPlayer = backgroundPlayer ?: return
+            if (value) {
+                bgPlayer.play()
+            } else {
+                bgPlayer.pause()
+            }
         }
 
     private var latestOptions: Bundle? = null
@@ -688,13 +695,26 @@ class MusicService : HeadlessJsMediaService() {
         val bgPlayer = ExoPlayer.Builder(this).build().apply {
             repeatMode = Player.REPEAT_MODE_ONE
             volume = track.backgroundVolume.coerceIn(0f, 1f)
+            addListener(object : Player.Listener {
+                override fun onPlayerError(error: PlaybackException) {
+                    Timber.w(error, "Background audio playback error")
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        stopBackground()
+                    }
+                }
+            })
             setMediaItem(MediaItem.fromUri(url))
             prepare()
         }
         backgroundPlayer = bgPlayer
-        if (player.isPlaying) {
+        if (player.playWhenReady) {
             bgPlayer.play()
         }
+    }
+
+    @MainThread
+    fun setBackgroundVolume(volume: Float) {
+        backgroundPlayer?.volume = volume.coerceIn(0f, 1f)
     }
 
     @MainThread
@@ -710,7 +730,7 @@ class MusicService : HeadlessJsMediaService() {
     @MainThread
     private fun syncBackgroundPlayState() {
         val bgPlayer = backgroundPlayer ?: return
-        if (player.isPlaying) {
+        if (player.playWhenReady) {
             bgPlayer.play()
         } else {
             bgPlayer.pause()

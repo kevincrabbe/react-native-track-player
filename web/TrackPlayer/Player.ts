@@ -7,6 +7,7 @@ export class Player {
   protected element?: HTMLMediaElement;
   protected player?: shaka.Player;
   protected backgroundElement?: HTMLAudioElement;
+  protected backgroundErrorHandler?: () => void;
   protected _current?: Track = undefined;
   protected _playWhenReady = false;
   protected _state: PlaybackState = { state: State.None };
@@ -134,12 +135,21 @@ export class Player {
    * background audio control
    */
   protected startBackground(track: Track) {
+    this.stopBackground();
     if (!track.backgroundUrl) return;
     this.backgroundElement = new Audio(track.backgroundUrl as string);
     this.backgroundElement.loop = true;
     this.backgroundElement.volume = Math.min(
       Math.max(track.backgroundVolume ?? 1.0, 0),
       1
+    );
+    this.backgroundErrorHandler = () => {
+      console.warn('Background audio failed to load:', track.backgroundUrl);
+      this.stopBackground();
+    };
+    this.backgroundElement.addEventListener(
+      'error',
+      this.backgroundErrorHandler
     );
     if (this._playWhenReady) {
       this.backgroundElement.play().catch((err) => console.error(err));
@@ -148,8 +158,16 @@ export class Player {
 
   protected stopBackground() {
     if (!this.backgroundElement) return;
+    if (this.backgroundErrorHandler) {
+      this.backgroundElement.removeEventListener(
+        'error',
+        this.backgroundErrorHandler
+      );
+      this.backgroundErrorHandler = undefined;
+    }
     this.backgroundElement.pause();
-    this.backgroundElement.src = '';
+    this.backgroundElement.removeAttribute('src');
+    this.backgroundElement.load();
     this.backgroundElement = undefined;
   }
 
@@ -221,6 +239,12 @@ export class Player {
   public setVolume(volume: number) {
     if (!this.element) throw new SetupNotCalledError();
     this.element.volume = volume;
+  }
+
+  public setBackgroundVolume(volume: number) {
+    if (this.backgroundElement) {
+      this.backgroundElement.volume = Math.min(Math.max(volume, 0), 1);
+    }
   }
 
   public getVolume() {

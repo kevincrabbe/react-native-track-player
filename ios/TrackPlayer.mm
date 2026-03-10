@@ -149,6 +149,10 @@ RCT_EXPORT_MODULE()
   [nativeTrackPlayer setVolumeWithLevel:level resolve:resolve reject:reject];
 }
 
+- (void)setBackgroundVolume:(double)level resolve:(nonnull RCTPromiseResolveBlock)resolve reject:(nonnull RCTPromiseRejectBlock)reject {
+  [nativeTrackPlayer setBackgroundVolumeWithVolume:level resolve:resolve reject:reject];
+}
+
 - (void)setupPlayer:(nonnull NSDictionary *)options resolve:(nonnull RCTPromiseResolveBlock)resolve reject:(nonnull RCTPromiseRejectBlock)reject {
   [nativeTrackPlayer setupPlayer:options resolver:resolve rejecter:reject];
 }

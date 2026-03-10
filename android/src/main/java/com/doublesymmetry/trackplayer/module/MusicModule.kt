@@ -440,6 +440,12 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
         callback.resolve(null)
     }
 
+    override fun setBackgroundVolume(volume: Double, callback: Promise) = launchInScope {
+        if (verifyServiceBoundOrReject(callback)) return@launchInScope
+        musicService.setBackgroundVolume(volume.toFloat())
+        callback.resolve(null)
+    }
+
     override fun getVolume(callback: Promise) = launchInScope {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 

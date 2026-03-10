@@ -17,6 +17,7 @@ export interface Spec extends TurboModule {
   seekTo(position: number): Promise<void>;
   seekBy(offset: number): Promise<void>;
   setVolume(level: number): Promise<void>;
+  setBackgroundVolume(level: number): Promise<void>;
   getVolume(): Promise<number>;
   setRate(rate: number): Promise<void>;
   getRate(): Promise<number>;

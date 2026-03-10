@@ -320,6 +320,15 @@ export async function setVolume(level: number): Promise<void> {
 }
 
 /**
+ * Sets the volume of the background audio for the current track.
+ *
+ * @param volume The volume as a number between 0 and 1.
+ */
+export async function setBackgroundVolume(level: number): Promise<void> {
+  return TrackPlayer.setBackgroundVolume(level);
+}
+
+/**
  * Sets the playback rate.
  *
  * @param rate The playback rate to change to, where 0.5 would be half speed,

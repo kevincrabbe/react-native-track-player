@@ -179,6 +179,9 @@ export class TrackPlayerModule extends PlaylistPlayer implements Spec {
   public async setVolume(volume: number) {
     return super.setVolume(volume);
   }
+  public async setBackgroundVolume(volume: number) {
+    return super.setBackgroundVolume(volume);
+  }
   // @ts-expect-error - promise return
   public async getVolume() {
     return super.getVolume();
