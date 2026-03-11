@@ -94,9 +94,14 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
     private func startBackground(for track: Track) {
         stopBackground()
 
-        guard let backgroundURL = track.backgroundURL else { return }
+        guard let backgroundURL = track.backgroundURL else {
+            print("[RNTP-BG] startBackground: no backgroundURL on track, skipping")
+            return
+        }
 
         let url = backgroundURL.value
+        print("[RNTP-BG] startBackground: url=\(url), volume=\(track.backgroundVolume), playWhenReady=\(player.playWhenReady)")
+
         let queuePlayer = AVQueuePlayer()
         queuePlayer.volume = min(max(track.backgroundVolume, 0.0), 1.0)
 
@@ -105,6 +110,25 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
 
         self.backgroundPlayer = queuePlayer
         self.backgroundLooper = looper
+
+        // Observe item status to catch loading failures
+        var statusObserver: NSKeyValueObservation? = nil
+        statusObserver = templateItem.observe(\.status, options: [.new]) { [weak self] item, _ in
+            switch item.status {
+            case .readyToPlay:
+                print("[RNTP-BG] templateItem ready to play")
+            case .failed:
+                print("[RNTP-BG] templateItem FAILED: \(item.error?.localizedDescription ?? "unknown")")
+                self?.delegate?.sendEvent(name: EventType.PlaybackBackgroundError.rawValue, body: [
+                    "message": item.error?.localizedDescription ?? "Background audio failed to load",
+                    "code": "ios-background-load-error"
+                ])
+            default:
+                print("[RNTP-BG] templateItem status: \(item.status.rawValue)")
+            }
+            statusObserver?.invalidate()
+            statusObserver = nil
+        }
 
         self.backgroundErrorObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemFailedToPlayToEndTime,
@@ -117,7 +141,7 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
                   let bgPlayer = self.backgroundPlayer,
                   bgPlayer.items().contains(failedItem) else { return }
             let error = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
-            print("[RNTP] Background audio error: \(error?.localizedDescription ?? "unknown")")
+            print("[RNTP-BG] Background audio playback error: \(error?.localizedDescription ?? "unknown")")
             self.delegate?.sendEvent(name: EventType.PlaybackBackgroundError.rawValue, body: [
                 "message": error?.localizedDescription ?? "Background audio playback error",
                 "code": "ios-background-error"
@@ -127,7 +151,10 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
 
         // Only start playing if main player is currently playing
         if player.playWhenReady {
+            print("[RNTP-BG] starting background playback immediately")
             queuePlayer.play()
+        } else {
+            print("[RNTP-BG] deferring background playback (playWhenReady=false)")
         }
     }
 
@@ -144,10 +171,15 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
     }
 
     private func syncBackgroundPlayState() {
-        guard let bgPlayer = backgroundPlayer else { return }
+        guard let bgPlayer = backgroundPlayer else {
+            print("[RNTP-BG] syncBackgroundPlayState: no backgroundPlayer exists")
+            return
+        }
         if player.playWhenReady {
+            print("[RNTP-BG] syncBackgroundPlayState: starting background (playWhenReady=true)")
             bgPlayer.play()
         } else {
+            print("[RNTP-BG] syncBackgroundPlayState: pausing background (playWhenReady=false)")
             bgPlayer.pause()
         }
     }
@@ -852,6 +884,9 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
         lastPosition: Double?
     ) {
         // Handle background audio for track changes
+        let hasTrack = item != nil
+        let hasBgUrl = (item as? Track)?.backgroundURL != nil
+        print("[RNTP-BG] currentItemChange: hasTrack=\(hasTrack), hasBgUrl=\(hasBgUrl)")
         stopBackground()
         if let track = item as? Track {
             startBackground(for: track)
