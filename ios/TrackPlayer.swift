@@ -850,6 +850,7 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
     func handleAudioPlayerStateChange(state: AVPlayerWrapperState) {
         emit(event: EventType.PlaybackState, body: getPlaybackStateBodyKeyValues(state: state))
         if (state == .ended) {
+            stopBackground()
             emit(event: EventType.PlaybackQueueEnded, body: [
                 "track": player.currentIndex,
                 "position": player.currentTime,

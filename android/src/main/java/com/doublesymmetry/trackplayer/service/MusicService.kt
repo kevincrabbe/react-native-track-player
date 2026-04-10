@@ -543,6 +543,7 @@ class MusicService : HeadlessJsMediaService() {
                 emit(MusicEvents.PLAYBACK_STATE, getPlayerStateBundle(it))
 
                 if (it == AudioPlayerState.ENDED && player.nextItem == null) {
+                    stopBackground()
                     emitQueueEndedEvent()
                 }
             }
